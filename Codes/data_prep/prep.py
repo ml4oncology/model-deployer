@@ -7,8 +7,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
-# from .. import logger
-from data_prep.constants_postprocess import lab_cols, lab_change_cols, symp_cols, symp_change_cols #drug_cols, 
+from data_prep.constants_postprocess import lab_cols, lab_change_cols, symp_cols, symp_change_cols  
 
 class Imputer:
     """Impute missing data by mean, mode, or median
@@ -27,9 +26,6 @@ class Imputer:
             cols = self.impute_cols[strategy]
             if len(cols)==0:
                 continue
-
-            # # use only the columns that exist in the data
-            # cols = list(set(cols).intersection(data.columns))
             
             data[cols] = data[cols].apply(pd.to_numeric)
             
@@ -58,135 +54,6 @@ def fill_missing_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# class OneHotEncoder:
-#     """One-hot encode (OHE) categorical data.
-    
-#     Create separate indicator columns for each unique category and assign binary
-#     values of 1 or 0 to indicate the category's presence.
-#     """
-#     def __init__(self):
-#         self.encode_cols = ['regimen', 'intent']
-#         self.final_columns = None # the final feature names after OHE
-        
-#         # function to get the indicator columns of a categorical feature
-#         self.get_indcols = lambda cols, feat: cols[cols.str.startswith(feat)]
-        
-#     def separate_regimen_sets(
-#         self, 
-#         data: pd.DataFrame, 
-#         verbose: bool = True
-#     ) -> pd.DataFrame:
-#         """For regimens, some categories represent a regimen set (different 
-#         treatments taken concurrently/within a short span of time). Create
-#         separate columns for each regimen in the set. If those columns already
-#         exists, combine them together.
-        
-#         E.g.
-#         regimen_A  regimen_B  regimen_A && regimen_B && regimen_C
-#         True       False      False 
-#         False      True       False 
-#         False      False      True    
-#         False      False      False
-        
-#         regimen_A  regimen_B  regimen_C
-#         True       False      False
-#         False      True       False
-#         True       True       True
-#         False      False      False
-        
-#         Examples of A && B
-#         1. LU-ATEZOLIZU (COMPASS) && LU-ETOPCARBO
-#         2. GI-GEM+ABRAXANE && LU-PEMBROLIZUMAB
-#         """
-#         cols = self.get_indcols(data.columns, 'regimen_')
-#         drop_cols = []
-#         for col, mask in data[cols].items():
-#             regimens = col.replace('regimen_', '').split(' && ')
-#             if len(regimens) == 1: 
-#                 continue
-
-#             for regimen in regimens:
-#                 regimen_col = f'regimen_{regimen}'
-#                 data[regimen_col] = data.get(regimen_col, 0) | mask
-#             drop_cols.append(col)
-#         data = data.drop(columns=drop_cols)
-        
-#         if verbose:
-#             mask = self.get_indcols(data.columns, 'regimen_').isin(cols)
-#             msg = (f'Separated and dropped {len(drop_cols)} treatment set '
-#                    f'indicator columns, and added {sum(~mask)} new treatment '
-#                    'indicator columns')
-#             # logger.info(msg)
-        
-#         return data
-        
-#     def encode(
-#         self, 
-#         data: pd.DataFrame, 
-#         separate_regimen_sets: bool = True, 
-#         verbose: bool = True
-#     ) -> pd.DataFrame:
-#         """
-#         Args:
-#             separate_regimen_sets (bool): If True, convert the regimen set 
-#                 (regimen_A && regimen_C) indicator column into its individual 
-#                 regimen (regimen_A, regimen_B) indicator columns (combine if 
-#                 already exists)
-#         """        
-#         # one-hot encode categorical columns
-#         # use only the columns that exist in the data
-#         cols = [col for col in self.encode_cols if col in data.columns]
-#         data = pd.get_dummies(data, columns=cols)
-        
-#         if separate_regimen_sets:
-#             data = self.separate_regimen_sets(data, verbose=verbose)
-        
-#         if self.final_columns is None:
-
-#             # collapse rare regimens (less than 6 patients) into other
-#             # TODO: modularize this
-#             other_mask = False
-#             drop_cols = []
-#             for col in data.columns[data.columns.str.startswith('regimen')]:
-#                 mask = data[col].astype(bool) # TODO: make all the regimen indicator columns booleans by default...
-#                 if data.loc[mask, 'mrn'].nunique() < 6:
-#                     drop_cols.append(col)
-#                     other_mask |= mask
-#             data = data.drop(columns=drop_cols)
-#             data['regimen_other'] = other_mask.astype(int)
-#             print(f'Reassigning the following indicators with less than 6 patients as other: {drop_cols}')
-            
-#             self.final_columns = data.columns
-#             return data
-        
-#         # reassign any indicator columns that did not exist in final columns
-#         # as other
-#         for feature in cols:
-#             indicator_cols = self.get_indcols(data.columns, feature)
-#             extra_cols = indicator_cols.difference(self.final_columns)
-#             if extra_cols.empty: continue
-            
-#             if verbose:
-#                 count = data[extra_cols].sum()
-#                 msg = (f'Reassigning the following {feature} indicator columns '
-#                        f'that did not exist in train set as other:\n{count}')
-#                 # logger.info(msg)
-                
-#             other_col = f'{feature}_other'
-#             if other_col not in data: data[other_col] = 0
-#             data[other_col] |= data[extra_cols].any(axis=1).astype(int)
-#             data = data.drop(columns=extra_cols)
-            
-#         # fill in any missing columns
-#         missing_cols = self.final_columns.difference(data.columns)
-#         # use concat instead of data[missing_cols] = 0 to prevent perf warning
-#         data = pd.concat([
-#             data,
-#             pd.DataFrame(0, index=data.index, columns=missing_cols)
-#         ], axis=1)
-        
-#         return data
-
 def encode_regimens(df, info_data_dir):
 
     GI_regimen_FeatureList_Full = pd.read_excel(info_data_dir + '/GI_regimen_feature_list.xlsx')
@@ -207,8 +74,6 @@ def encode_regimens(df, info_data_dir):
     
     for iR in range(len(GI_regimen_FeatureList)):
         df = df.rename(columns={GI_regimen_FeatureList[iR]: GI_regimen_rename_FeatureList[iR]})
-        
-    # df.columns = df.columns.str.lower()
     
     return df
 
@@ -235,7 +100,6 @@ class PrepData:
     """Prepare the data for model training"""
     def __init__(self):
         self.imp = Imputer() # imputer
-        # self.ohe = OneHotEncoder() # one-hot encoder
         self.scaler = None # normalizer
         self.clip_thresh = None # outlier clippers
 
@@ -262,7 +126,6 @@ class PrepData:
     def transform_data(
         self, 
         data,
-        # one_hot_encode: bool = True,
         clip: bool = True, 
         impute: bool = True, 
         normalize: bool = True, 
@@ -282,11 +145,6 @@ class PrepData:
         if ohe_kwargs is None: ohe_kwargs = {}
         if data_name is None: data_name = 'the'
         
-        # if one_hot_encode:
-        #     # One-hot encode categorical data
-        #     # if verbose: logger.info(f'One-hot encoding {data_name} data')
-        #     data = self.ohe.encode(data, **ohe_kwargs)
-            
         if clip:
             # Clip the outliers based on the train data quantiles
             data = self.clip_outliers(data)

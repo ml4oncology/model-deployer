@@ -6,10 +6,6 @@ Using the current directory
 
 import pickle
 # import numpy as np
-# import pandas as pd
-# import glob
-# import os
-# from datetime import date
 
 from checkData import check_data
 from final_processing import final_process
@@ -20,8 +16,8 @@ warnings.filterwarnings("ignore")
 
 
 ############################ Make changes #################################
-ROOT_DIR = "C:/Users/Muammar/Desktop/MIRA_Silent_Deployment"
-data_root_dir = f'{ROOT_DIR}/AIM2REDUCE'
+ROOT_DIR = "C:/Users/..." # Select Root Directory
+data_root_dir = f'{ROOT_DIR}/Data'
 dataPull_day = '20240318' #date.today().strftime("%Y%m%d")
 
 
@@ -32,7 +28,7 @@ if __name__ == "__main__":
     train_param_dir = f'{ROOT_DIR}/Infos/Train_Data_parameters'
     code_dir = f'{ROOT_DIR}/Codes'
     model_dir = f'{ROOT_DIR}/Models' 
-    proj_name = 'AIM2REDUCE'
+    proj_name = 'XXX' #Select project name required to access data file 
     model_name = 'ED' #ED or symp
     
     

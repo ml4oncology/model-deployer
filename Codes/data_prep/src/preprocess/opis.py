@@ -1,21 +1,14 @@
 """
 Module to preprocess OPIS (systemic therapy treatment data) - CHEMO
 """
-# from typing import Optional
+
 
 import numpy as np
 import pandas as pd
-from datetime import timedelta #datetime,
-# import re
-
-
-# info_data_path= 'C:/Users/Muammar/Desktop/MIRA_Deployment/Infos'
-# included_drugs = load_included_drugs(info_data_path)
-# included_regimens = load_included_regimens(info_data_path)
+from datetime import timedelta 
 
 
 def get_treatment_data(
-    # drugs: pd.DataFrame, 
     chemo_data_file,
     included_regimens: pd.DataFrame,
     A2R_EPIC_GI_regimen_map,
@@ -43,15 +36,6 @@ def process_treatment_data(df) -> pd.DataFrame:
     # order by date and regimen
     df = df.sort_values(by=['treatment_date', 'regimen'])
 
-    # # make each drug into two new columns (drug_given_dose, drug_regimen_dose), used to compute recommended ideal
-    # # dose and percentage of recommended ideal dose that was given
-    # given_dose = df.pivot(columns='drug_name', values='given_dose').loc[df.index]
-    # regimen_dose = df.pivot(columns='drug_name', values='regimen_dose').loc[df.index]
-    # given_dose.columns = 'drug_' + given_dose.columns + '_given_dose'
-    # regimen_dose.columns = 'drug_' + regimen_dose.columns + '_regimen_dose'
-    # dosage = pd.concat([given_dose, regimen_dose], axis=1).fillna(0)
-    # df = df.join(dosage)
-
     # merge rows with same treatment days
     df = merge_same_day_treatments(df) #, dosage
 
@@ -62,20 +46,7 @@ def process_treatment_data(df) -> pd.DataFrame:
 
 
 def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, dataPull_day) -> pd.DataFrame: #drugs: pd.DataFrame, 
-    
-    # regimens.columns = regimens.columns.str.lower()
-
-    # # clean column names
-    # df.columns = df.columns.str.lower()
-    # col_map = {
-    #     'research_id': 'mrn', 
-    #     'trt_date_utc': 'treatment_date', 
-    #     'first_trt_date_utc': 'first_treatment_date',
-    #     'dose_ord_or_min_dose_ord': 'dose_ordered',
-    #     'dose_given': 'given_dose'
-    # }
-    # df = df.rename(columns=col_map)
-    
+       
     # Split dose and units
     df[['given_dose','given_dose_unit']] = df["given_dose"].str.split(" ", n=1, expand=True)
     df[['dose_ordered','dose_ordered_unit']] = df["dose_ordered"].str.split(" ", n=1, expand=True)
@@ -83,15 +54,8 @@ def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, d
     # clean intent feature
     df['intent'] = df['intent'].replace('U', np.nan)
     
-    # # Fill physical characteristics data before filtering by scheduled treatment date
-    # df = fill_phys_char(df)
-    
     df = filter_chemo_Trt(df, dataPull_day)
     df = filter_regimens(df, regimens, A2R_EPIC_GI_regimen_map)
-    # df = filter_drugs(df) #, drugs
-    
-    # df = clean_regimens(df)
-    # df = clean_drugs(df)
 
     # remove one-off duplicate rows (all values are same except for one, most likely due to human error)
     for col in ['first_treatment_date', 'cycle_number']: 
@@ -106,21 +70,11 @@ def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, d
 def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.DataFrame:
     # filter out rows with missing regimen info
     mask = df['regimen'].notnull()
-    # get_excluded_numbers(df, mask, context=' with missing regimen info')
     df = df[mask].copy()
     
     # Map Regimen from A2R to EPIC
     df['regimen_EPIC'] = df['regimen']
     df['regimen'] = df['regimen'].map(A2R_EPIC_GI_regimen_map) # map mrn to patientid
-
-    # # group all clinical trials into TRIAL regimen
-    # mask = df['regimen'].str.startswith('CT-')
-    # df.loc[mask, 'regimen'] = 'TRIAL'
-
-    # # filter out rows not part of selected regimens
-    # mask = df['regimen'].isin(regimens['regimen'])
-    # # get_excluded_numbers(df, mask, context=' not part of selected regimens')
-    # df = df[mask].copy()
 
     # rename some of the regimens
     regimen_map = dict(regimens.query('rename.notnull()')[['regimen', 'rename']].to_numpy())
@@ -130,15 +84,6 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
 
 def filter_drugs(df): #, drugs: pd.DataFrame
     
-    # # Split drug names
-    # df[['drug_name_init','drug_name_rem']] = df["drug_name"].str.split(" ", n=1, expand=True)
-    # drugs[['name_init','name_rem']] = drugs['name'].str.split(" ", n=1, expand=True)
-    
-    # # filter out rows with trial, supportive, or non-aerodigestive drug entries
-    # mask = df['drug_name_init'].isin(drugs['name_init'])
-    # # get_excluded_numbers(df, mask, context=' that received only trial, supportive, and/or non-aerodigestive drugs')
-    # df = df[mask]
-
     # filter out rows where no dosage is given (dose = nan or 0)
     # e.g. patients get vital sign examination but don't receive treatment
     mask=df['given_dose'].notnull()
@@ -146,7 +91,6 @@ def filter_drugs(df): #, drugs: pd.DataFrame
     
     df["given_dose"] = pd.to_numeric(df["given_dose"])
     mask = df['given_dose'] > 0 
-    # get_excluded_numbers(df, mask, context=' where dosage is not provided')
     df = df[mask]
     
     return df
@@ -154,23 +98,13 @@ def filter_drugs(df): #, drugs: pd.DataFrame
 
 def filter_chemo_Trt(df, dataPull_day):
     
-    # # keep rows with 'Completed' day_status
-    # mask = df['day_status'] == 'Completed'
-    # df = df[mask]
-    
     # Keep treatments scheduled for the next day
-    # df2 = df.copy()
     df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
     
-    following_treatment_date = pd.to_datetime(dataPull_day).date() + timedelta(days=1) #Treatment scheduled one day after data pull
-    
+    #Treatment scheduled one day after data pull
+    following_treatment_date = pd.to_datetime(dataPull_day).date() + timedelta(days=1) 
     mask = df['tx_sched_date']==following_treatment_date
-    
     df = df[mask]
-    
-    # # keep rows with 'Completed' cycle_status
-    # mask = df['cycle_status'] == 'Completed'
-    # df = df[mask]
     
     df['treatment_date'] = df['tx_sched_date']
     
@@ -237,246 +171,8 @@ def merge_same_day_treatments(df): # dosage: pd.DataFrame
             'first_treatment_date': 'max',
             
             # TODO: come up with robust way to handle the following conflicts
-            'intent': 'first',
-            # 'change_reason_desc': 'first', 
-            # 'route': 'first', 
-            # 'chemo_flag': 'first'
-
-            # # sum the dosages together
-            # **{col: 'sum' for col in dosage.columns}
+            'intent': 'first'
         })
     )
     df = df.reset_index()
     return df
-
-# ###############################################################################
-# # I/O
-# ###############################################################################
-# def load_included_drugs(data_dir) -> pd.DataFrame:
-        
-#     df = pd.read_csv(f'{data_dir}/opis_drug_list.csv')
-#     col_map = {'Drug_name': 'name', 'chemo': 'category', 'Recommended_dose_multiplier': 'recommended_dose_formula'}
-#     df = df.rename(columns=col_map)
-#     df = df.drop(columns=['counts'])
-#     df = df.query('category == "INCLUDE"')
-#     return df
-
-# def load_included_regimens(data_dir) -> pd.DataFrame:
-        
-#     df = pd.read_csv(f'{data_dir}/opis_regimen_list.csv')
-#     df.columns = df.columns.str.lower()
-#     return df
-
-# ###############################################################################
-# # Cleaners
-# ###############################################################################
-# # regex expressions
-# any_digit = '\d'
-# any_one_or_more_digit = '\d+'
-# any_char = '[a-zA-Z]'
-# any_one_or_more_char = '[a-zA-Z]+'
-# any_alphanumeric = '[a-zA-Z0-9]'
-# space_or_dash_or_plus = '[ \-+]'
-# optional = lambda char: f'{char}?'
-# either = lambda char1, char2: f'[{char1}|{char2}]'
-# not_match = lambda exp: f'(?!{exp})' # negative lookahead
-
-# def clean_regimens(df) -> pd.DataFrame:
-#     df['original_regimen_entry'] = df['regimen'].copy()
-
-#     # separate department into a new column 
-#     df[['department', 'regimen']] = df['regimen'].str.split('-', n=1, expand=True)
-#     df.loc[df['department'] == 'TRIAL', 'regimen'] = 'TRIAL' # fix up the TRIAL regimen
-    
-#     # separate modification into a new column
-#     pattern = f'{space_or_dash_or_plus}MOD'
-#     mask = df['regimen'].str.contains(pattern)
-#     df['modified_treatment'] = mask
-#     df['regimen'] = df['regimen'].str.replace(pattern, '', regex=True)
-    
-#     # separate dose type (maintenance dose vs loading dose) into a new column
-#     df['dose_type'] = np.nan
-#     df['regimen'] = df['regimen'].str.replace('MAINT', 'MAIN')
-#     for pattern, dose_type in {'MAIN': 'maintenance', 'LOAD': 'loading'}.items():
-#         mask = df['regimen'].str.contains(pattern)
-#         df.loc[mask, 'dose_type'] = dose_type
-#         df['regimen'] = df['regimen'].str.replace(pattern, '')
-
-#     # separate radiation therapy into a new column
-#     df['with_radiation_therapy'] = np.nan
-#     for pattern, with_rt in {'NO RT': False, f'{space_or_dash_or_plus}RT': True}.items():
-#         mask = df['regimen'].str.contains(pattern)
-#         df['regimen'] = df['regimen'].str.replace(pattern, '', regex=True)
-#         df.loc[mask, 'with_radiation_therapy'] = with_rt
-
-#     # separate COMPASS trial into a new column
-#     pattern = 'COMPASS|COMP|COM'
-#     df['COMPASS_trial'] = df['regimen'].str.contains(pattern)
-#     df['regimen'] = df['regimen'].str.replace(pattern, '', regex=True)
-    
-#     # clean regimen feature
-#     # TODO: debug why the below line doesn't work
-#     # df[['regimen', 'curated_regimen_notes']] = df['regimen'].apply(clean_regimen, result_type='expand')
-#     regimens_map, notes_map = {}, {}
-#     for regimen in df['regimen'].unique():
-#         cleaned_regimen, note = clean_regimen_name(regimen)
-#         regimens_map[regimen] = cleaned_regimen
-#         notes_map[regimen] = note
-#     df['curated_regimen_notes'] = df['regimen'].map(notes_map)
-#     df['regimen'] = df['regimen'].map(regimens_map)
-
-#     return df
-
-
-# def clean_drugs(df) -> pd.DataFrame:
-#     df['original_drug_entry'] = df['drug_name'].copy()
-    
-#     # separate receival of placebo into a new column
-#     mask = df['drug_name'].str.contains('/PLACEBO')
-#     df['with_placebo'] = mask
-#     df['drug_name'] = df['drug_name'].str.replace('/PLACEBO', '')
-    
-#     # clean drug feature
-#     drug_map, notes_map = {}, {}
-#     for drug in df['drug_name'].unique():
-#         cleaned_drug, note = clean_drug_name(drug)
-#         drug_map[drug] = cleaned_drug
-#         notes_map[drug] = note
-#     df['curated_drug_notes'] = df['drug_name'].map(notes_map)
-#     df['drug_name'] = df['drug_name'].map(drug_map)
-#     return df
-
-
-# def clean_regimen_name(regimen: str) -> tuple[str, str]:
-#     note = ''
-    
-#     # make entries consistent (same abbreviations)
-#     replace_map = {
-#         'TRAS': ['TRAST'],
-#         'BEVA': ['BEVACIZUMAB'],
-#         'RAMU': ['RAMUCIRUMAB', 'RAMUC'],
-#         'PEMB': ['PEMBROLIZUMAB', 'PEMBRO'],
-#         'PNTM': ['PANITUMUMAB'],
-#         'NIVL': ['NIVOLUMAB', 'NIVO'],
-#         'DURVA': ['DURVALUMAB'],
-#         'CETU': ['CETUXIMAB', 'CETUX'],
-#         'PEME': ['PEMETREXED'],
-#         'RALT': ['RALTITREXED', 'RALTI'],
-#         'IRIN': ['IRINO'],
-#         'CRBP': ['CARBO', 'CARB'],
-#         'CISP': ['CISPLATIN', 'CISPLAT'],
-#         'DOCE': ['DOCETAXEL'],
-#         'PACL': ['PACLITAXEL', 'PACLITAX', 'PACLI'],
-#         'NPAC': ['ABRAXANE', 'ABRAX'],
-#         'FU': ['5FU'],
-#         'APR': ['APREPITANT', 'APREP'],
-#         'W': ['WEEKLY', 'WEEKS', 'WEEK', 'WKLY', 'WK']
-#     }
-#     for new_substr, old_substrs in replace_map.items():
-#         for old_substr in old_substrs:
-#             regimen = regimen.replace(old_substr, new_substr)
-            
-#     # remove excess regimen information from the regimen entries
-#     note = ''
-#     substrs = [
-#         'IND-NPC', # TODO: Ask what does it stand for?
-#         'BS', # TODO: Ask what does it stand for?
-#         'CCO', # Cancer Care Ontario
-#         'SAP', # Special Access Program
-#         'ADJ', # Adjuvant therapy
-#         'CIV', # Continuous intravenous infusion
-#         'FIXED',
-#         'MVASI', # Biosimilar version of Bevacizumab
-#         'NSCLC', # Non-small cell lung cancer,
-#         'ELDERLY',
-#         'BILIARY',
-#         'PANCREAS',
-#         'GASTRIC',
-#         'ESOPHAGEAL',
-#         'ANAL',
-#         'THYMOMA'
-#     ]
-#     for substr in substrs:
-#         if substr in regimen:
-#             regimen = regimen.replace(substr, '')
-#             note += f'{substr}; '
-            
-#     patterns = [
-#         f'Q{any_digit}W', # e.g. Q2W
-#         f'WX{any_digit}', # e.g. WX2
-#         f'{any_digit}-W', # e.g. 2-W
-#         f'{any_digit}X/W', # e.g. 2X/W
-#         f'X{any_digit}{any_one_or_more_char}', # e.g. X6MON
-#         f'{either("D", "C")}{any_digit},{any_one_or_more_digit},{any_one_or_more_digit}', # e.g. D1,8,15
-#         f'D{any_digit},{any_one_or_more_digit}', # e.g. D1,15
-#         f'D{any_digit}-{any_digit}', # e.g. D1-4
-#         f'{either("D", "C")}{any_digit}', # e.g. C1
-#         f'CYC {any_digit},{any_digit}', # e.g. CYC 1,2
-#         f'{any_digit} DAY{optional("S")}', # e.g. 3 DAYS
-#         f'{any_one_or_more_digit}MG/{any_char}{any_alphanumeric}' # e.g. 20MG/M2
-#     ]
-#     for pattern in patterns:
-#         substrs = re.findall(pattern, regimen)
-#         if len(substrs) > 0:
-#             assert len(substrs) == 1
-#             substr = substrs[0]
-#             regimen = regimen.replace(substr, '')
-#             note += f'{substr}; '
-    
-#     if 'W' in regimen:
-#         regimen = regimen.replace('W', '')
-#         note += f'Weekly; '
-    
-#     # clean up punctuation marks
-#     for chars in ['()', '/', ';', ' ']:
-#         regimen = regimen.replace(chars, '') # remove empty brackets, slashes, semicolons, white spaces
-#     regimen = regimen.rstrip('-(+') # remove trailing dash, open bracket, plus sign
-    
-#     # elongate some of the shortened abbreviations to make entries consistent
-#     pattern_map = {
-#         'CISP': f'CIS{not_match("P")}',
-#         'PEME': f'PEM{not_match("E|B")}',
-#     }
-#     for replacement, pattern in pattern_map.items():
-#         regimen = re.sub(pattern, replacement, regimen)
-    
-#     return regimen, note
-
-
-# def clean_drug_name(drug: str) -> tuple[str, str]:
-#     note = ''
-    
-#     # remove excess drug information from the drug entries
-#     note = ''
-#     substrs = [
-#         '- PAID',
-#         'SAP',
-#         'SPECIAL ACCESS',
-#         'STUDY',
-#         'TRIAL',
-#         'COMPASSIONATE',
-#         'SUPPLY',
-#         'SUPPL',
-#         'SUP',
-#         'MVASI', # Biosimilar version of bevacizumab
-#         'AVASTIN', # Brand name for bevacizumab
-#         'OGIVRI', # Brand name of biosimilar version of trastuzumab
-#         'HERCEPTIN', # Brand name of trastuzumab
-#         'ABRAXANE', # Brand name of paclitaxel
-#         'ONIVYDE', # Brand name of irinotecan liposome injection
-#         'HCL', # hydrochloride
-#         'DISODIUM',
-#         'TARTRATE',
-#     ]
-#     for substr in substrs:
-#         if substr in drug:
-#             drug = drug.replace(substr, '')
-#             note += f'{substr}; '
-            
-#     drug = drug.replace('PACLITAXEL', 'PACL')
-            
-#     # clean up punctuation marks
-#     drug = drug.replace('()', '') # remove empty brackets
-#     drug = drug.strip() 
-    
-#     return drug, note

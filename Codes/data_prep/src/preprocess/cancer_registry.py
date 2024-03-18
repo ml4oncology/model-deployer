@@ -1,12 +1,10 @@
 """
 Module to preprocess the cancer registry (cancer patient demographic data) - DIAGNOSIS
 """
-# from typing import Optional
+
 import pandas as pd
 import numpy as np
 
-# from ..constants import cancer_code_map
-# from ..util import get_excluded_numbers
 
 def get_demographic_data(diagnosis_data_file, info_data_dir):
 
@@ -23,9 +21,8 @@ def process_demographic_data(df, info_data_dir):
     # order by diagnosis date
     df = df.sort_values(by='last_contact_date')
 
-    # make each cancer site and morphology into a new column with diagnosis date as entry
+    # make each cancer site into a new column with diagnosis date as entry
     cancer_site = df.pivot(columns='primary_site', values='last_contact_date').loc[df.index]
-    # morphology = df.pivot(columns='morphology', values='diagnosis_date').loc[df.index]
     cancer_site.columns = 'cancer_site_' + cancer_site.columns
     
     current_cancer_sites = list(cancer_site.columns.values)
@@ -43,8 +40,7 @@ def process_demographic_data(df, info_data_dir):
     for iC in range(len(rem_sites)):
         cancer_site[rem_sites[iC]]=np.nan
     
-    # morphology.columns = 'morphology_' + morphology.columns
-    cancer = pd.concat([cancer_site], axis=1) #, morphology
+    cancer = pd.concat([cancer_site], axis=1) 
     cancer = cancer.astype(str)
     df = df.join(cancer)
 
@@ -68,7 +64,6 @@ def process_demographic_data(df, info_data_dir):
 def filter_demographic_data(df):
     # clean column names
     df.columns = df.columns.str.lower()
-    # df.columns = df.columns.str.replace('start', 'start_date')
     df = df.rename(columns= {'research_id': 'mrn'})
 
     # filter out patients without medical record numbers
@@ -78,7 +73,6 @@ def filter_demographic_data(df):
 
     # clean data types
     df['mrn'] = df['mrn'].astype(int)
-    # df['morphology'] = df['morphology'].astype(int).astype(str)
 
     # sanity check - ensure vital status and death date matches and makes sense
     # mask = df['vital_status'].map({'Dead': False, 'Alive': True}) == df['date_of_death'].isnull()
@@ -111,8 +105,6 @@ def filter_demographic_data(df):
         # only keep first three characters - the rest are for specifics
         # e.g. C50 Breast: C501 Central portion, C504 Upper-outer quadrant, etc
         df[col] = df[col].str[:3]
-        # map code to english
-        # df[col] = df[col].map(cancer_code_map)
            
 
     return df

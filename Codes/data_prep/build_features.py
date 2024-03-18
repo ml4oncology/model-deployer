@@ -1,12 +1,6 @@
 """
 Script to turn raw data into features for modelling
 """
-# from pathlib import Path
-# import argparse
-# import os
-# import sys
-# ROOT_DIR = Path(__file__).parent.parent.as_posix()
-# sys.path.append(ROOT_DIR)
 
 import pandas as pd
 
@@ -15,23 +9,9 @@ from data_prep.src.preprocess.dart import get_symptoms_data
 from data_prep.src.preprocess.emergency import get_emergency_room_data
 from data_prep.src.preprocess.lab import get_lab_data
 from data_prep.src.preprocess.opis import get_treatment_data
-# from src.util import load_included_drugs, load_included_regimens
 
-# def parse_args():
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('--data-dir', type=str, default=f'{ROOT_DIR}/data')
-#     args = parser.parse_args()
-#     return args
 
 def  build_features(data_root_dir, info_data_dir, proj_name, dataPull_day):
-    # args = parse_args()
-    # data_dir = args.data_dir
-    # if not os.path.exists(f'{data_dir}/interim'): os.makedirs(f'{data_dir}/interim')
-
-    # included_drugs = load_included_drugs(data_dir=f'{data_dir}/external')
-    # included_regimens = load_included_regimens(data_dir=f'{data_dir}/external')
-    # mrn_map = pd.read_csv(f'{data_dir}/external/MRN_map.csv')
-    # mrn_map = mrn_map.set_index('RESEARCH_ID')['PATIENT_MRN'].to_dict()
     
     biochem_file = f"{data_root_dir}/{proj_name+'_biochemistry_'+dataPull_day}.csv"
     hema_file = f"{data_root_dir}/{proj_name+'_hematology_'+dataPull_day}.csv"
@@ -60,5 +40,3 @@ def  build_features(data_root_dir, info_data_dir, proj_name, dataPull_day):
     
     return dart, canc_reg, opis, lab, er_visit
     
-# if __name__ == '__main__':
-#     build_features()

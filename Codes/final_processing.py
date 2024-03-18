@@ -4,12 +4,7 @@ Using the current directory
 
 """
 
-# import numpy as np
 import pickle
-# import pandas as pd
-# import glob
-# import os
-# from datetime import date
 
 from data_prep.build_features import build_features
 from data_prep.combine_features import combine_features

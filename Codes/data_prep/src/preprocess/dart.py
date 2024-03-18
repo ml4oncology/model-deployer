@@ -5,8 +5,6 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 
-# from ..util import get_excluded_numbers
-
 
 def get_symptoms_data(esas_data_file):
 
@@ -20,7 +18,6 @@ def get_symptoms_data(esas_data_file):
 def process_symptoms_data(df):
     
     # get indices of ecog scores containing values with descriptions
-    # ecog_locs = df[df['patient_ecog'].str.len() > 1].index.values
     ecog_locs = np.where(df['patient_ecog'].apply(lambda x: len(str(x)) > 3))[0]
     if len(ecog_locs)>0:
         for i1 in range(len(ecog_locs)):
@@ -51,15 +48,6 @@ def filter_symptoms_data(df):
     df.columns = df.columns.str.lower()
     # clean data types
     for col in ['date_of_birth', 'survey_date']: df[col] = pd.to_datetime(df[col])
-    
-    # # filter out patients who consented out of research
-    # # WARNING: Beware of trailing spaces
-    # # e.g. >> df['research_consent'].unique()
-    # #      array(['Y                    ', '                     ', 'N                    '])
-    # df['research_consent'] = df['research_consent'].str.strip()
-    # mask = df['research_consent'] != 'N'
-    # get_excluded_numbers(df, mask, context=' in which consent to research was declined')
-    # df = df[mask]
 
     # filter out patients whose sex is not Male/Female
     mask = df['gender'] != 'Unknown'

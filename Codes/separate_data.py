@@ -5,8 +5,6 @@ Using the current directory
 """
 
 # import numpy as np
-# import pickle
-# import pandas as pd
 
 def separate_ptInfo_features(df):
     

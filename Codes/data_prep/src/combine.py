@@ -2,23 +2,17 @@
 Module to combine features
 """
 from functools import partial
-import multiprocessing as mp
-import itertools
 
 from tqdm import tqdm
 import pandas as pd
-import numpy as np
 from typing import Tuple
 
 from data_prep.src.feat_eng import ( 
     get_days_since_last_event, 
     get_line_of_therapy, 
-    # get_perc_ideal_dose_given,
     get_visit_month_feature,
     get_years_diff, 
 )
-# from .preprocess.opis import clean_drug_name
-# from .util import get_excluded_numbers, split_and_parallelize
 
 
 def combine_demographic_to_main_data(
@@ -79,29 +73,6 @@ def combine_treatment_to_main_data(
     return df
 
 
-# def combine_perc_dose_to_main_data(main: pd.DataFrame, included_drugs: pd.DataFrame) -> pd.DataFrame:
-#     """Combine percentage of ideal dose given to main data 
-#     And remove the raw dosages features (regimen dose and given dose)
-
-#     NOTE: The given dose is already set ~2 days in advance prior to treatment date (i.e. no data leakage)
-#     """
-#     # create drug to dose formula map
-#     included_drugs['name'] = [clean_drug_name(name)[0] for name in included_drugs['name']]
-#     included_drugs = included_drugs.drop_duplicates()
-#     assert not any(included_drugs['name'].duplicated())
-#     drug_to_dose_formula_map = dict(included_drugs[['name', 'recommended_dose_formula']].to_numpy())
-
-#     # combine the percentage of ideal dose given features
-#     given_dose_over_ideal_dose = get_perc_ideal_dose_given(main, drug_to_dose_formula_map)
-#     df = main.join(given_dose_over_ideal_dose)
-
-#     # remove the raw dosage features
-#     cols = df.columns
-#     df = df.drop(columns=cols[cols.str.startswith('drug_')])
-
-#     return df
-
-
 def combine_feat_to_main_data(
     main: pd.DataFrame, 
     feat: pd.DataFrame, 
@@ -113,9 +84,6 @@ def combine_feat_to_main_data(
 
     Both main and feat should have mrn and date columns
     """
-    # mask = main['mrn'].isin(feat['mrn'])
-    # worker = partial(feature_extractor, main_date_col=main_date_col, feat_date_col=feat_date_col, **kwargs)
-    # result = split_and_parallelize((main[mask], feat), worker)
     result = feature_extractor(main, feat, main_date_col, feat_date_col, 'last', time_window)
     cols = ['index'] + feat.columns.drop(['mrn', feat_date_col]).tolist()
     result = pd.DataFrame(result, columns=cols).set_index('index')
@@ -188,15 +156,6 @@ def combine_event_to_main_data(
         event_date_col: The column name of the event date
         lookback_window: The lookback window in terms of number of years from treatment date to extract event features
     """
-    # mask = main['mrn'].isin(event['mrn'])
-    # worker = partial(
-    #     event_feature_extractor, 
-    #     main_date_col=main_date_col, 
-    #     event_date_col=event_date_col, 
-    #     lookback_window=lookback_window, 
-    #     **kwargs
-    # )
-    # result = split_and_parallelize((main[mask], event), worker)
     result = event_feature_extractor(main, event, main_date_col, event_date_col, lookback_window)
     cols = ['index', f'num_prior_{event_name}s_within_{lookback_window}_years', f'days_since_prev_{event_name}']
     result = pd.DataFrame(result, columns=cols).set_index('index')
@@ -234,7 +193,6 @@ def event_feature_extractor(
             mask = event_dates.between(earliest_date, date, inclusive='left')
             if mask.any():
                 N_prior_events = mask.sum()
-                # assert(sum(adm_dates == adm_dates[mask].max()) == 1)
                 N_days = (date - event_dates[mask].iloc[-1]).days
                 result.append([idx, N_prior_events, N_days])
     return result
@@ -249,40 +207,3 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
     )
     df['days_since_last_treatment'] = df.groupby('mrn', group_keys=False).apply(get_days_since_last_treatment)
     return df
-
-
-# ###############################################################################
-# # Multiprocessing
-# ###############################################################################
-# def parallelize(generator, worker, processes: int = 4):
-#     pool = mp.Pool(processes=processes)
-#     result = pool.map(worker, generator)
-#     pool.close()
-#     pool.join() # wait for all threads
-#     result = list(itertools.chain(*result))
-#     return result
-
-# def split_and_parallelize(data, worker, split_by_mrns: bool = True, processes: int = 4):
-#     """Split up the data and parallelize processing of data
-    
-#     Args:
-#         data: Supports a sequence, pd.DataFrame, or tuple of pd.DataFrames 
-#             sharing the same patient ids
-#         split_by_mrns: If True, split up the data by patient ids
-#     """
-#     generator = []
-#     if split_by_mrns:
-#         mrns = data[0]['mrn'] if isinstance(data, tuple) else data['mrn']
-#         mrn_groupings = np.array_split(mrns.unique(), processes)
-#         if isinstance(data, tuple):
-#             for mrn_grouping in mrn_groupings:
-#                 items = tuple(df[df['mrn'].isin(mrn_grouping)] for df in data)
-#                 generator.append(items)
-#         else:
-#             for mrn_grouping in mrn_groupings:
-#                 item = data[mrns.isin(mrn_grouping)]
-#                 generator.append(item)
-#     else:
-#         # splits df into x number of partitions, where x is number of processes
-#         generator = np.array_split(data, processes)
-#     return parallelize(generator, worker, processes=processes)

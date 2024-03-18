@@ -17,7 +17,6 @@ def get_lab_data(hema_data_file, biochem_data_file):
 
     lab = pd.concat([hema, biochem])
     lab = process_lab_data(lab)
-    # lab['mrn'] = lab['patientId']
     lab = lab.rename(columns={'patientId': 'mrn'})
     return lab
 
@@ -25,11 +24,6 @@ def process_lab_data(df):
     df['obs_datetime'] = pd.to_datetime(df['obs_datetime'], utc=True)
     df['obs_date'] = pd.to_datetime(df['obs_datetime'].dt.date)
     df = df.sort_values(by='obs_datetime')
-
-    # save the units for each observation name
-    unit_map = dict(df[['obs_name', 'obs_unit']].value_counts().index.tolist())
-    # TODO: save unit map in feature store for later use
-    # print(unit_map)
 
     # take the most recent value if multiple lab tests taken in the same day
     # NOTE: dataframe already sorted by obs_datetime
@@ -86,24 +80,11 @@ def clean_lab_data(df):
     # clean column names
     col_map = {
         # assign obs_ prefix to ensure no conflict with preexisting columns
-        'component-code-coding-0-display': 'obs_name',
-        # 'component-code-text': 'obs_text', 
+        'component-code-coding-0-display': 'obs_name', 
         'component-valueQuantity-unit': 'obs_unit',
         'component-valueQuantity-value': 'obs_value',
-        # 'effectiveDateTime': 'effective_datetime',
         'lastUpdated': 'obs_datetime',
     }
     df = df.rename(columns=col_map)
-
-    # # the observation name is captured in two different columns, combine them together
-    # df['obs_name'] = df['obs_display'].fillna(df['obs_text'])
-    # # there are no cases where both display and text are filled
-    # assert not any(df['obs_display'].notnull() & df['obs_text'].notnull())
-
-    # # the datetime is captured in two different columns, combine them together
-    # df['obs_datetime'] = df['effective_datetime'].fillna(df['updated_datetime'])
-    # effective datetime is always earlier (as in more accurate) than last updated datetime
-    # mask = df['effective_datetime'].notnull()
-    # assert all(df.loc[mask, 'effective_datetime'] < df.loc[mask, 'updated_datetime'])
     
     return df
