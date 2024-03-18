@@ -1,0 +1,34 @@
+"""
+Module for feature engineering
+"""
+import numpy as np
+
+###############################################################################
+# Time
+###############################################################################
+def get_visit_month_feature(df, col: str = 'treatment_date'):
+    # convert to cyclical features
+    month = df[col].dt.month - 1
+    df['visit_month_sin'] = np.sin(2*np.pi*month/12)
+    df['visit_month_cos'] = np.cos(2*np.pi*month/12)
+    return df
+
+def get_days_since_last_event(df, main_date_col: str = 'treatment_date', event_date_col: str = 'treatment_date'):
+    if main_date_col == event_date_col:
+        return (df[main_date_col] - df[event_date_col].shift()).dt.days
+    else:
+        return (df[main_date_col] - df[event_date_col]).dt.days
+
+def get_years_diff(df, col1: str, col2: str):
+    return df[col1].dt.year - df[col2].dt.year
+
+###############################################################################
+# Treatment
+###############################################################################
+def get_line_of_therapy(df):
+    # identify line of therapy (the nth different palliative intent treatment taken)
+    # NOTE: all other intent treatment are given line of therapy of 0. Usually (not always but oh well) once the first
+    # palliative treatment appears, the rest of the treatments remain palliative
+    new_regimen = (df['first_treatment_date'] != df['first_treatment_date'].shift())
+    palliative_intent = df['intent'] == 'PALLIATIVE'
+    return (new_regimen & palliative_intent).cumsum()
