@@ -5,11 +5,14 @@ Using the current directory
 """
 
 import pickle
+import pandas as pd
 # import numpy as np
 
-from checkData import check_data
+#from checkData import check_data
 from final_processing import final_process
 from separate_data import separate_ptInfo_features
+
+from tqdm import tqdm
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -18,23 +21,39 @@ warnings.filterwarnings("ignore")
 ############################ Make changes #################################
 ROOT_DIR = "C:/Users/..." # Select Root Directory
 data_root_dir = f'{ROOT_DIR}/Data'
+dataStart_day = '20240229' #date.today().strftime("%Y%m%d")
+dataEnd_day = '20240530' #date.today().strftime("%Y%m%d")
+
 dataPull_day = '20240318' #date.today().strftime("%Y%m%d")
 
 
 
 if __name__ == "__main__":
-        
+    
     info_data_dir= f'{ROOT_DIR}/Infos'
     train_param_dir = f'{ROOT_DIR}/Infos/Train_Data_parameters'
     code_dir = f'{ROOT_DIR}/Codes'
     model_dir = f'{ROOT_DIR}/Models' 
-    proj_name = 'XXX' #Select project name required to access data file 
-    model_name = 'ED' #ED or symp
+    proj_name = 'AIM2REDUCE'
+    model_name = ['ED','symp'] #ED or symp
     
+    sdate = pd.to_datetime(dataStart_day).date()   # start date
+    edate = pd.to_datetime(dataEnd_day).date()   # end date
+    dataPull_range = pd.date_range(sdate,edate,freq='d').strftime("%Y%m%d")
     
-    emptyData = check_data(data_root_dir, proj_name, dataPull_day)
+    fullData_pred = []
     
-    if not emptyData: 
+    for iD in tqdm(range(0,len(dataPull_range))): 
+        
+        dataPull_day = dataPull_range[iD]
+    
+        chemo_file = f"{data_root_dir}/{proj_name}_chemo_{dataPull_day}.csv"
+        diagnosis_file = f"{data_root_dir}/{proj_name}_diagnosis_{dataPull_day}.csv"
+        
+        if pd.read_csv(chemo_file).empty and pd.read_csv(diagnosis_file).empty:
+            print(f"No Patient Data for: {dataPull_day}")
+            continue
+
     
         ######################### Data Processing ################################
         # Process and prepare data
@@ -71,9 +90,3 @@ if __name__ == "__main__":
         # pred_last30days = comb_ptInfo_pred.copy()
         # pred_last30days = pred_last30days[pred_last30days["treatment_date"] >= (pd.to_datetime(dataPull_day) - pd.Timedelta(days=30))]
         # # pred_last30days.sort_values(by=['mrn','treatment_date'])
-        
-    else:
-        
-        print("No Patient Data for: " + dataPull_day)
-
-
