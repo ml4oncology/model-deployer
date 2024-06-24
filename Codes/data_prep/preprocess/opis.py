@@ -7,10 +7,14 @@ import numpy as np
 import pandas as pd
 from datetime import timedelta 
 
+"""
+Args:
+included_regimens: selected EPR regimens during model training
+A2R_EPIC_GI_regimen_map: map between the old EPR regimens and the new EPIC regimens
+"""
 
 def get_treatment_data(
     chemo_data_file,
-    included_regimens: pd.DataFrame,
     A2R_EPIC_GI_regimen_map,
     dataPull_day    
 ) -> pd.DataFrame:
@@ -20,36 +24,45 @@ def get_treatment_data(
     A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map.set_index('PROTOCOL_DISPLAY_NAME')['Mapped_Name_All'].to_dict()
     
     df = pd.read_csv(chemo_data_file)
-    df = fill_phys_char(df, included_regimens)
-    df = filter_treatment_data(df, included_regimens, A2R_EPIC_GI_regimen_map, dataPull_day) #drugs,
     df = process_treatment_data(df)
+    df = filter_treatment_data(df, A2R_EPIC_GI_regimen_map, dataPull_day)
     return df
     
 
-def process_treatment_data(df) -> pd.DataFrame:
+def process_treatment_data(df):
     
-    #Replace nan in regimens with names from EPIC (due to names not available during mapping)
-    nan_locs = np.where(df['regimen'].isnull())[0]
-    for iL in range(len(nan_locs)):
-        df['regimen'].iloc[nan_locs[iL]] = df['regimen_EPIC'].iloc[nan_locs[iL]]
-    
+    # clean column names
+    df.columns = df.columns.str.lower()
+    col_map = {
+        'research_id': 'mrn', 
+        'trt_date_utc': 'treatment_date', 
+        'first_trt_date_utc': 'first_treatment_date',
+        'dose_ord_or_min_dose_ord': 'dose_ordered',
+        'dose_given': 'given_dose'
+    }
+    df = df.rename(columns=col_map)
+
     # order by date and regimen
     df = df.sort_values(by=['treatment_date', 'regimen'])
 
     # merge rows with same treatment days
     df = merge_same_day_treatments(df) #, dosage
 
-    # forward fill height and weight
-    for col in ['height', 'weight']: df[col] = df.groupby('mrn')[col].ffill()
+    # forward fill height, weight and body_surface_area
+    for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('mrn')[col].ffill()
+
+    # forward and backward fill first treatment date
+    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
+    df['first_treatment_date'] = df.groupby('mrn')['first_treatment_date'].ffill().bfill()
 
     return df
 
 
 def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, dataPull_day) -> pd.DataFrame: #drugs: pd.DataFrame, 
        
-    # Split dose and units
-    df[['given_dose','given_dose_unit']] = df["given_dose"].str.split(" ", n=1, expand=True)
-    df[['dose_ordered','dose_ordered_unit']] = df["dose_ordered"].str.split(" ", n=1, expand=True)
+    # # Split dose and units
+    # df[['given_dose','given_dose_unit']] = df["given_dose"].str.split(" ", n=1, expand=True)
+    # df[['dose_ordered','dose_ordered_unit']] = df["dose_ordered"].str.split(" ", n=1, expand=True)
     
     # clean intent feature
     df['intent'] = df['intent'].replace('U', np.nan)
@@ -74,7 +87,7 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
     
     # Map Regimen from A2R to EPIC
     df['regimen_EPIC'] = df['regimen']
-    df['regimen'] = df['regimen'].map(A2R_EPIC_GI_regimen_map) # map mrn to patientid
+    df['regimen'] = df['regimen'].replace(A2R_EPIC_GI_regimen_map) # map mrn to patientid
 
     # rename some of the regimens
     regimen_map = dict(regimens.query('rename.notnull()')[['regimen', 'rename']].to_numpy())
@@ -82,18 +95,18 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
     return df
 
 
-def filter_drugs(df): #, drugs: pd.DataFrame
+# def filter_drugs(df): #, drugs: pd.DataFrame
     
-    # filter out rows where no dosage is given (dose = nan or 0)
-    # e.g. patients get vital sign examination but don't receive treatment
-    mask=df['given_dose'].notnull()
-    df = df[mask]
+#     # filter out rows where no dosage is given (dose = nan or 0)
+#     # e.g. patients get vital sign examination but don't receive treatment
+#     mask=df['given_dose'].notnull()
+#     df = df[mask]
     
-    df["given_dose"] = pd.to_numeric(df["given_dose"])
-    mask = df['given_dose'] > 0 
-    df = df[mask]
+#     df["given_dose"] = pd.to_numeric(df["given_dose"])
+#     mask = df['given_dose'] > 0 
+#     df = df[mask]
     
-    return df
+#     return df
 
 
 def filter_chemo_Trt(df, dataPull_day):
@@ -111,33 +124,33 @@ def filter_chemo_Trt(df, dataPull_day):
     return df
 
 
-def fill_phys_char(df, regimens):
+# def fill_phys_char(df, regimens):
     
-    regimens.columns = regimens.columns.str.lower()
+#     regimens.columns = regimens.columns.str.lower()
 
-    # clean column names
-    df.columns = df.columns.str.lower()
-    col_map = {
-        'research_id': 'mrn', 
-        'trt_date_utc': 'treatment_date', 
-        'first_trt_date_utc': 'first_treatment_date',
-        'dose_ord_or_min_dose_ord': 'dose_ordered',
-        'dose_given': 'given_dose'
-    }
-    df = df.rename(columns=col_map)
+#     # clean column names
+#     df.columns = df.columns.str.lower()
+#     col_map = {
+#         'research_id': 'mrn', 
+#         'trt_date_utc': 'treatment_date', 
+#         'first_trt_date_utc': 'first_treatment_date',
+#         'dose_ord_or_min_dose_ord': 'dose_ordered',
+#         'dose_given': 'given_dose'
+#     }
+#     df = df.rename(columns=col_map)
     
-    # order by date and regimen
-    df = df.sort_values(by=['treatment_date', 'regimen'])
+#     # order by date and regimen
+#     df = df.sort_values(by=['treatment_date', 'regimen'])
     
-    # forward fill height, weight and body_surface_area
-    for col in ['height', 'weight','body_surface_area']: df[col] = df.groupby('mrn')[col].ffill()
+#     # forward fill height, weight and body_surface_area
+#     for col in ['height', 'weight','body_surface_area']: df[col] = df.groupby('mrn')[col].ffill()
     
-    # forward/backward fill first treatment date
-    df['first_treatment_date']=pd.to_datetime(df['first_treatment_date'])
-    for col in ['first_treatment_date']: df[col] = df.groupby('mrn')[col].ffill()
-    for col in ['first_treatment_date']: df[col] = df.groupby('mrn')[col].bfill()
+#     # forward/backward fill first treatment date
+#     df['first_treatment_date']=pd.to_datetime(df['first_treatment_date'])
+#     for col in ['first_treatment_date']: df[col] = df.groupby('mrn')[col].ffill()
+#     for col in ['first_treatment_date']: df[col] = df.groupby('mrn')[col].bfill()
     
-    return df
+#     return df
 
 
 ###############################################################################

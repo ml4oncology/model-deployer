@@ -5,7 +5,8 @@ from typing import Optional
 
 import pandas as pd
 
-from ..constants import obs_map
+# from ..constants import obs_map
+from data_prep.constants import obs_map
 
 def get_lab_data(hema_data_file, biochem_data_file):
 
@@ -32,8 +33,8 @@ def process_lab_data(df):
     # make each observation name into a new column
     df = df.pivot(index=['patientId', 'obs_date'], columns='obs_name', values='obs_value').reset_index()
     
-    for i1 in range(len(df.columns)):
-        df[df.columns[i1]] = df[df.columns[i1]].replace(['<5'], '2.5')
+    # replace lab test entries "<5" with 2.5
+    for col in df.columns: df[col] = df[col].replace('<5', 2.5)
 
     df.columns.name = None
     return df

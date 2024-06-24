@@ -9,8 +9,8 @@ import pandas as pd
 # import numpy as np
 
 #from checkData import check_data
-from final_processing import final_process
-from separate_data import separate_ptInfo_features
+from data_prep.final_processing import final_process
+# from separate_data import separate_ptInfo_features
 
 from tqdm import tqdm
 
@@ -60,7 +60,9 @@ if __name__ == "__main__":
         prepared_data = final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model_dir, proj_name, model_name, dataPull_day)
         
         # Separate patient mrn and trt_date from model features
-        patient_info, model_features = separate_ptInfo_features(prepared_data)
+        # patient_info, model_features = separate_ptInfo_features(prepared_data)
+        patient_info = prepared_data[['mrn', 'treatment_date']].copy()
+        model_features = prepared_data.drop(columns=['mrn', 'treatment_date'])
                 
         ######################### Model Evaluation ################################
         # load the model from disk

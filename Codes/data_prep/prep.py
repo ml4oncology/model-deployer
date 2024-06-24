@@ -7,7 +7,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 
-from data_prep.constants_postprocess import lab_cols, lab_change_cols, symp_cols, symp_change_cols  
+from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols  
 
 class Imputer:
     """Impute missing data by mean, mode, or median
@@ -54,44 +54,61 @@ def fill_missing_data(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def encode_regimens(df, info_data_dir):
+def encode_regimens(df, regimen_data):
+    
+    regimens_features = list(regimen_data['Regimen'])
+    regimens_renamed = list(regimen_data['Regimen_Rename'])
+    
+    # for iR in range(len(regimens_features)):
+    #     df[regimens_features[iR]]=0
+    # df['regimen_other']=0
+    
+    df[regimens_features + ['regimen_other']] = 0
 
-    GI_regimen_FeatureList_Full = pd.read_excel(info_data_dir + '/GI_regimen_feature_list.xlsx')
-    GI_regimen_FeatureList = list(GI_regimen_FeatureList_Full['Regimen'])
-    GI_regimen_rename_FeatureList = list(GI_regimen_FeatureList_Full['Regimen_Rename'])
     
-    for iR in range(len(GI_regimen_FeatureList)):
-        df[GI_regimen_FeatureList[iR]]=0
-    df['regimen_other']=0
-    
-    for iR2 in range(len(df)):
-        if df['regimen'][iR2] in GI_regimen_FeatureList:
-            df[df['regimen'][iR2]][iR2] = 1
-        else:
-            df['regimen_other'][iR2] = 1    
+    # for iR2 in range(len(df)):
+    #     if df['regimen'][iR2] in regimens_features:
+    #         df[df['regimen'][iR2]][iR2] = 1
+    #     else:
+    #         df['regimen_other'][iR2] = 1    
             
-    df = df.drop('regimen', axis=1)
+    # df = df.drop('regimen', axis=1)
     
-    for iR in range(len(GI_regimen_FeatureList)):
-        df = df.rename(columns={GI_regimen_FeatureList[iR]: GI_regimen_rename_FeatureList[iR]})
+    mask = df['regimen'].isin(regimens_features)
+    df.loc[mask, 'regimen'] = 'regimen_other' # if regimen not in the list, set it to regimen_other
+    df = pd.get_dummies(df, columns=['regimen'], prefix='', prefix_sep='') # one-hot encode
+    
+    # for iR in range(len(regimens_features)):
+    #     df = df.rename(columns={regimens_features[iR]: regimens_renamed[iR]})
+        
+    rename_map = dict(zip(regimens_features, regimens_renamed))
+    df = df.rename(columns=rename_map)
     
     return df
 
 def encode_intent(df):
 
     intent_list = ['PALLIATIVE', 'NEOADJUVANT', 'ADJUVANT', 'CURATIVE']
+    intent_renamed = ['intent_' + s for s in intent_list]
     
-    for iR in range(len(intent_list)):
-        df[intent_list[iR]]=0
+    # for iR in range(len(intent_list)):
+    #     df[intent_list[iR]]=0
+        
+    df[intent_list] = 0
     
-    for iR2 in range(len(df)):
-        if df['intent'][iR2] in intent_list:
-            df[df['intent'][iR2]][iR2] = 1
+    # for iR2 in range(len(df)):
+    #     if df['intent'][iR2] in intent_list:
+    #         df[df['intent'][iR2]][iR2] = 1
             
-    df = df.drop('intent', axis=1)
+    # df = df.drop('intent', axis=1)
     
-    for iR in range(len(intent_list)):
-        df = df.rename(columns={intent_list[iR]: 'intent_'+intent_list[iR]})
+    df = pd.get_dummies(df, columns=['intent'], prefix='', prefix_sep='') # one-hot encode
+    
+    # for iR in range(len(intent_list)):
+    #     df = df.rename(columns={intent_list[iR]: 'intent_'+intent_list[iR]})
+        
+    rename_map = dict(zip(intent_list, intent_renamed))
+    df = df.rename(columns=rename_map)
     
     return df
             
@@ -196,3 +213,58 @@ class PrepData:
             axis=1
         )
         return data
+   
+    
+"""
+Prepare data for symptoms models
+"""
+
+def prep_symp_data(df):
+
+    # Regimen Columns to delete 
+    reg_cols = ['regimen_GI_FLOT _GASTRIC_', 'regimen_GI_FOLFNALIRI _COMP_', 
+                    'regimen_GI_FUFA C3 _GASTRIC_','regimen_GI_FUFA WEEKLY',
+                    'regimen_GI_GEM D1_8 _ CAPECIT', 'regimen_GI_PACLI WEEKLY']
+    
+    # # Transfer any '1' in the regimen columns to be deleted to 'regimen_other' column
+    # for iR in range(len(reg_cols)):
+    #     # df['regimen_other'] = np.where(df[Reg_Cols[iR]] == 1, max(df['regimen_other'],1), df['regimen_other'])
+        
+    #     cols_with_one = np.where(df.index[df[reg_cols[iR]]].tolist())[0]
+    #     df['regimen_other'][cols_with_one] = 1
+     
+    # # alternative way
+    # mask = df[reg_cols].any(axis=1)
+    # df.loc[mask, 'regimen_other'] = True
+
+    df['regimen_other'] |= df[reg_cols].any(axis=1)    
+    
+    # Delete columns
+    lab_Cols = ['bicarbonate', 'bicarbonate_is_missing']
+    All_Del_Cols = reg_cols + lab_Cols
+
+    df = df.drop(columns=All_Del_Cols)
+
+    # clean column names; replacing space with an underscore
+    # col_map = {
+    #     'regimen_GI_CISPFU ANAL': 'regimen_GI_CISPFU_ANAL', 
+    #     'regimen_GI_CISPFU ESOPHAGEAL': 'regimen_GI_CISPFU_ESOPHAGEAL', 
+    #     'regimen_GI_FOLFOX _GASTRIC_': 'regimen_GI_FOLFOX__GASTRIC_',
+    #     'regimen_GI_FOLFOX_6 MOD': 'regimen_GI_FOLFOX_6_MOD',
+    #     'regimen_GI_FU CIV _ RT': 'regimen_GI_FU_CIV___RT',
+    #     'regimen_GI_FUFA C1_4_5 GASTRIC': 'regimen_GI_FUFA_C1_4_5_GASTRIC',
+    #     'regimen_GI_FUFA C2 _GASTRIC_': 'regimen_GI_FUFA_C2__GASTRIC_',
+    #     'regimen_GI_GEM 40MG_M2 2X_WK': 'regimen_GI_GEM_40MG_M2_2X_WK',
+    #     'regimen_GI_GEM 7_WEEKLY': 'regimen_GI_GEM_7_WEEKLY',
+    #     'regimen_GI_GEM D1_8': 'regimen_GI_GEM_D1_8',
+    #     'regimen_GI_GEM D1_8_15': 'regimen_GI_GEM_D1_8_15',
+    #     'regimen_GI_GEMCISP _BILIARY_': 'regimen_GI_GEMCISP__BILIARY_',
+    #     'regimen_GI_GEMCISP _PANCREAS_': 'regimen_GI_GEMCISP__PANCREAS_',
+    #     'regimen_GI_PACLI_CARBO WEEKX5': 'regimen_GI_PACLI_CARBO_WEEKX5'
+    # }
+    # df = df.rename(columns=col_map)
+    
+    df.columns = df.columns.str.replace(' ', '_')
+    
+
+    return df

@@ -2,12 +2,16 @@
 Module to combine features
 """
 from functools import partial
+from itertools import product
 
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 from typing import Tuple
 
-from data_prep.src.feat_eng import ( 
+import yaml
+
+from data_prep.engineer import ( 
     get_days_since_last_event, 
     get_line_of_therapy, 
     get_visit_month_feature,
@@ -39,12 +43,12 @@ def combine_demographic_to_main_data(
     # get_excluded_numbers(df, mask, context=' under 18 years of age')
     df = df[mask]
 
-    # convert each cancer site / morphology datetime columns into binary indicator variables based on whether diagnosis
-    # date occured before treatment date
-    cols = df.columns
-    cols = cols[cols.str.contains('cancer_site')] #|morphology
-    # TODO: find out why df[cols] = df[cols] < df[visit_date_col] is throwing errors
-    for col in cols: df[col] = ~df[col].isin(['nan']) #df[col] < df[main_date_col]
+    # # convert each cancer site / morphology datetime columns into binary indicator variables based on whether diagnosis
+    # # date occured before treatment date
+    # cols = df.columns
+    # cols = cols[cols.str.contains('cancer_site')] #|morphology
+    # # TODO: find out why df[cols] = df[cols] < df[visit_date_col] is throwing errors
+    # for col in cols: df[col] = ~df[col].isin(['nan']) #df[col] < df[main_date_col]
 
     return df
 
@@ -207,3 +211,86 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
     )
     df['days_since_last_treatment'] = df.groupby('mrn', group_keys=False).apply(get_days_since_last_treatment)
     return df
+
+
+"""
+Combine the features into one unified dataset
+"""
+
+def combine_features(lab, trt, dmg, sym, erv, code_dir):
+     
+    with open(code_dir+'/config.yaml') as file:
+        cfg = yaml.safe_load(file)
+        
+    align_on = cfg['align_on'] 
+    main_date_col = cfg['main_date_col'] 
+
+    if align_on == 'treatment-dates':
+        df = trt
+    elif align_on == 'weekly-mondays':
+        #TODO: make mrn and start and end date selection robust (i.e. make them into command line arguments)
+        mrns = trt['mrn'].unique()
+        dates = pd.date_range(start='2018-01-01', end='2018-12-31', freq='W-MON')
+        df = pd.DataFrame(product(mrns, dates), columns=['mrn', main_date_col])
+    elif align_on.endswith('.parquet.gzip') or align_on.endswith('.parquet'):
+        df = pd.read_parquet(align_on)
+    elif align_on.endswith('.csv'):
+        df = pd.read_csv(align_on)
+    else:
+        raise ValueError(f'Sorry, aligning features on {align_on} is not supported yet')
+
+    if align_on != 'treatment-dates':
+        # logger.info('Combining treatment features...')
+        df = combine_treatment_to_main_data(df, trt, main_date_col=main_date_col, time_window=(-7,0))
+    
+    # Convert to date format
+    df[main_date_col] = pd.to_datetime(df[main_date_col])
+    df[main_date_col] = df[main_date_col].dt.strftime('%Y-%m-%d')
+    df[main_date_col] = pd.to_datetime(df[main_date_col])
+    
+    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
+    df['first_treatment_date'] = df['first_treatment_date'].dt.strftime('%Y-%m-%d')
+    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
+    
+    sym['survey_date'] = pd.to_datetime(sym['survey_date'])
+    sym['survey_date'] = sym['survey_date'].dt.strftime('%Y-%m-%d')
+    sym['survey_date'] = pd.to_datetime(sym['survey_date'])
+    
+    # logger.info('Combining demographic features...')
+    df = combine_demographic_to_main_data(main=df, demographic=dmg, main_date_col=main_date_col)
+    
+    # logger.info('Combining symptom features...')
+    df = combine_feat_to_main_data(
+        main=df, feat=sym, main_date_col=main_date_col, feat_date_col='survey_date', 
+        time_window=(-cfg['symp_lookback_window'],0)
+    )
+    
+    # logger.info('Combining lab features...')
+    df = combine_feat_to_main_data(
+        main=df, feat=lab, main_date_col=main_date_col, feat_date_col='obs_date', 
+        time_window=(-cfg['lab_lookback_window'],0)
+    )
+
+    # logger.info('Combining ED visit features...')
+    df = combine_event_to_main_data(
+        main=df, event=erv, main_date_col='treatment_date', event_date_col='event_date', event_name='ED_visit',
+        lookback_window=cfg['ed_visit_lookback_window']
+    )
+    
+    # logger.info('Combining engineered features...')
+    # df = combine_perc_dose_to_main_data(main=df, included_drugs=included_drugs)
+    df = add_engineered_features(df, date_col=main_date_col)
+    
+    # df.to_parquet(f'{output_dir}/{output_filename}.parquet.gzip', compression='gzip', index=False)
+    
+    # Add missing feature
+    df['hematocrit']=np.nan
+    # df['red_cell_distribution_width']=np.nan
+    
+    #Drop columns
+    drop_cols = ['esas_constipation', 'esas_diarrhea', 'esas_sleep', 'activated_partial_thromboplastin_time',
+                 'carbohydrate_antigen_19-9', 'prothrombin_time_international_normalized_ratio']
+    df = df.drop(columns=drop_cols)
+    
+    return df
+    

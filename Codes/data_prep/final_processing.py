@@ -5,12 +5,12 @@ Using the current directory
 """
 
 import pickle
+import pandas as pd
 
-from data_prep.build_features import build_features
-from data_prep.combine_features import combine_features
+from data_prep.build import build_features
+from data_prep.combine import combine_features
 from data_prep.engineer import get_change_since_prev_session, get_missingness_features
-from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData #Imputer 
-from data_prep.prepData_Symps import prep_symp_data
+from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData, prep_symp_data #Imputer 
 
 
 def final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model_dir, proj_name, model_name, dataPull_day):
@@ -29,7 +29,8 @@ def final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model
     df = get_missingness_features(df)
     
     #Encode Regimens and Intent
-    df = encode_regimens(df, info_data_dir)
+    GI_regimen_FeatureList_Full = pd.read_excel(info_data_dir + '/GI_regimen_feature_list.xlsx')
+    df = encode_regimens(df, GI_regimen_FeatureList_Full)
     df = encode_intent(df)
     
     
