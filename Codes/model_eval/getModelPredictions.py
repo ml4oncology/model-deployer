@@ -5,7 +5,6 @@ Script to load the models and generate predictions
 
 import pickle
 import pandas as pd
-import numpy as np
 
 def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_ED, patient_info_symp, model_features_symp):
     
@@ -44,9 +43,6 @@ def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_E
     
     ################ Symptoms Model Evaluation #####################
     # load the model from disk
-    # with open("C:/UHN CDI UoT/Projects/Aim2Reduce/Model Silent Deployment/Noke LGBM Models/train_results_2024_kevin_3pt_epic.pkl", "rb") as f:
-    #     train_results = pickle.load(f)
-    
     filename = 'LGBM_symp.pkl'
     loaded_models_symp = pickle.load(open(model_dir+'/'+filename, 'rb'))
     
@@ -68,8 +64,6 @@ def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_E
         label = 'Label_'+symp_labels[iL]+'_3pt_change'
         
         # Get the corresponding threshold
-        # label_thres_loc = np.where(Symp_Pred_Thresholds['Labels']==label)[0][0]
-        # label_thres = Symp_Pred_Thresholds['Prediction_threshold'][label_thres_loc]
         label_thres = Symp_Pred_Thresholds.loc[Symp_Pred_Thresholds['Labels'] == label, 'Prediction_threshold'].iloc[0]
         # print(label + ':' + str(label_thres))
         

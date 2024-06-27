@@ -69,10 +69,6 @@ def process_treatment_data(df, dataPull_day):
 
 
 def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, dataPull_day) -> pd.DataFrame: #drugs: pd.DataFrame, 
-       
-    # # Split dose and units
-    # df[['given_dose','given_dose_unit']] = df["given_dose"].str.split(" ", n=1, expand=True)
-    # df[['dose_ordered','dose_ordered_unit']] = df["dose_ordered"].str.split(" ", n=1, expand=True)
     
     # clean column names
     regimens.columns = regimens.columns.str.lower()
@@ -111,25 +107,10 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
 def fwdfill(df):
     
     df['height'] = df.groupby('research_id')['height'].ffill()
-
     df['weight'] = df.groupby('research_id')['weight'].ffill()
-
     df['body_surface_area'] = df.groupby('research_id')['body_surface_area'].ffill()
     
     return df
-
-# def filter_drugs(df): #, drugs: pd.DataFrame
-    
-#     # filter out rows where no dosage is given (dose = nan or 0)
-#     # e.g. patients get vital sign examination but don't receive treatment
-#     mask=df['given_dose'].notnull()
-#     df = df[mask]
-    
-#     df["given_dose"] = pd.to_numeric(df["given_dose"])
-#     mask = df['given_dose'] > 0 
-#     df = df[mask]
-    
-#     return df
 
 
 def filter_chemo_Trt(df, dataPull_day):
@@ -142,38 +123,7 @@ def filter_chemo_Trt(df, dataPull_day):
     mask = df['tx_sched_date']==following_treatment_date
     df = df[mask]
     
-    # df['treatment_date'] = df['tx_sched_date']
-    
     return df
-
-
-# def fill_phys_char(df, regimens):
-    
-#     regimens.columns = regimens.columns.str.lower()
-
-#     # clean column names
-#     df.columns = df.columns.str.lower()
-#     col_map = {
-#         'research_id': 'mrn', 
-#         'trt_date_utc': 'treatment_date', 
-#         'first_trt_date_utc': 'first_treatment_date',
-#         'dose_ord_or_min_dose_ord': 'dose_ordered',
-#         'dose_given': 'given_dose'
-#     }
-#     df = df.rename(columns=col_map)
-    
-#     # order by date and regimen
-#     df = df.sort_values(by=['treatment_date', 'regimen'])
-    
-#     # forward fill height, weight and body_surface_area
-#     for col in ['height', 'weight','body_surface_area']: df[col] = df.groupby('mrn')[col].ffill()
-    
-#     # forward/backward fill first treatment date
-#     df['first_treatment_date']=pd.to_datetime(df['first_treatment_date'])
-#     for col in ['first_treatment_date']: df[col] = df.groupby('mrn')[col].ffill()
-#     for col in ['first_treatment_date']: df[col] = df.groupby('mrn')[col].bfill()
-    
-#     return df
 
 
 ###############################################################################

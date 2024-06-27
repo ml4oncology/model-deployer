@@ -32,8 +32,6 @@ def get_missingness_features(df: pd.DataFrame) -> pd.DataFrame:
     
     target_cols = symp_cols + lab_cols + lab_change_cols + symp_change_cols
     
-    # for iT in range(len(target_cols)):
-    #     df[target_cols[iT] + '_is_missing'] = df[target_cols[iT]].isnull()
     for col in target_cols: df[f'{col}_is_missing'] = df[col].isnull()
         
     return df

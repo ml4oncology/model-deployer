@@ -3,7 +3,6 @@ Module to preprocess the cancer registry (cancer patient demographic data) - DIA
 """
 
 import pandas as pd
-# import numpy as np
 
 
 def get_demographic_data(diagnosis_data_file, info_data_dir):
@@ -17,32 +16,6 @@ def process_demographic_data(df, info_data_dir):
     
     All_Cancer_Site_List = pd.read_excel(info_data_dir + '/Cancer_Site_List.xlsx')
     All_Cancer_Site_List = list(All_Cancer_Site_List['Cancer_Site'])
-    
-    # # order by diagnosis date
-    # df = df.sort_values(by='last_contact_date')
-
-    # # make each cancer site into a new column with diagnosis date as entry
-    # cancer_site = df.pivot(columns='primary_site', values='last_contact_date').loc[df.index]
-    # cancer_site.columns = 'cancer_site_' + cancer_site.columns
-    
-    # current_cancer_sites = list(cancer_site.columns.values)
-    
-    # common_sites = list(set(current_cancer_sites).intersection(All_Cancer_Site_List))
-    
-    # other_sites = list(set(current_cancer_sites) - set(common_sites))
-    
-    # cancer_site['cancer_site_other']=np.nan
-    # for iC in range(len(other_sites)):
-    #     cancer_site['cancer_site_other'] = cancer_site['cancer_site_other'] + cancer_site[other_sites[iC]]
-    #     cancer_site = cancer_site.drop(columns=[other_sites[iC]])
-        
-    # rem_sites = list(set(All_Cancer_Site_List) - set(common_sites))
-    # for iC in range(len(rem_sites)):
-    #     cancer_site[rem_sites[iC]]=np.nan
-    
-    # cancer = pd.concat([cancer_site], axis=1) 
-    # cancer = cancer.astype(str)
-    # df = df.join(cancer)
     
     cancer = df['primary_site'].str.get_dummies(', ')
     cancer = cancer.add_prefix('cancer_site_')
@@ -104,21 +77,6 @@ def filter_demographic_data(df):
     df = df[mask].copy()
     df['female'] = df.pop('sex') == 'Female'
 
-    # # Separate multiple cancer sites
-    # col_len = df['primary_site'].apply(lambda x: len(str(x)) > 6)
-    # if any(col_len):
-    #     df[['primary_site_1','primary_site_2']] = df["primary_site"].str.split(", ", n=1, expand=True)
-    #     mul_sites_loc = np.where(df['primary_site_2'].notnull())[0]
-        
-    #     for i1 in range(len(mul_sites_loc)):
-    #         new_row = df.loc[mul_sites_loc[i1]].copy()
-    #         new_row["primary_site"]=new_row["primary_site_2"]
-    #         df = df._append([new_row], ignore_index=True)
-    #         df["primary_site"][mul_sites_loc[i1]]=df['primary_site_1'][mul_sites_loc[i1]]
-            
-    #     df = df.drop('primary_site_1', axis=1)
-    #     df = df.drop('primary_site_2', axis=1)
-    
     # Separate multiple cancer sites
     # Check if any primary_site entries have more than one site
     if df['primary_site'].str.contains(', ').any():

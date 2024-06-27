@@ -43,13 +43,6 @@ def combine_demographic_to_main_data(
     # get_excluded_numbers(df, mask, context=' under 18 years of age')
     df = df[mask]
 
-    # # convert each cancer site / morphology datetime columns into binary indicator variables based on whether diagnosis
-    # # date occured before treatment date
-    # cols = df.columns
-    # cols = cols[cols.str.contains('cancer_site')] #|morphology
-    # # TODO: find out why df[cols] = df[cols] < df[visit_date_col] is throwing errors
-    # for col in cols: df[col] = ~df[col].isin(['nan']) #df[col] < df[main_date_col]
-
     return df
 
 

@@ -5,7 +5,6 @@ from typing import Optional
 
 import pandas as pd
 
-# from ..constants import obs_map
 from data_prep.constants import obs_map
 
 def get_lab_data(hema_data_file, biochem_data_file):

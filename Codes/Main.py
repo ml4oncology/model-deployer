@@ -24,8 +24,6 @@ data_root_dir = f'{ROOT_DIR}/Data'
 dataStart_day = '20240229' #date.today().strftime("%Y%m%d")
 dataEnd_day = '20240620' #date.today().strftime("%Y%m%d")
 
-# dataPull_day = '20240318' #date.today().strftime("%Y%m%d")
-
 if __name__ == "__main__":
     
     info_data_dir= f'{ROOT_DIR}/Infos'
@@ -88,4 +86,6 @@ if __name__ == "__main__":
             fullData_pred = comb_ptInfo_pred
         else:
             fullData_pred = pd.concat([fullData_pred, comb_ptInfo_pred], ignore_index=True, axis=0)
-            
+           
+        
+    fullData_pred.to_csv("./fullMonth_pred_March_April_May.csv")

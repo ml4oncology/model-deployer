@@ -1,7 +1,7 @@
 """
 Module to preprocess DART (symptom data)
 """
-# from typing import Optional
+
 import pandas as pd
 import numpy as np
 

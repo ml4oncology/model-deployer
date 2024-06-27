@@ -1,7 +1,6 @@
 """
 Module to preprocess emergency department visit (old pull) / emergency room data (new pull)
 """
-# from typing import Optional
 
 import pandas as pd
 
