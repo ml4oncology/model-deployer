@@ -5,6 +5,7 @@ from typing import Optional
 
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
+import numpy as np
 import pandas as pd
 
 from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols  
@@ -63,7 +64,7 @@ def encode_regimens(df, regimen_data):
     #     df[regimens_features[iR]]=0
     # df['regimen_other']=0
     
-    df[regimens_features + ['regimen_other']] = 0
+    # df[regimens_features + ['regimen_other']] = 0
 
     
     # for iR2 in range(len(df)):
@@ -74,9 +75,15 @@ def encode_regimens(df, regimen_data):
             
     # df = df.drop('regimen', axis=1)
     
-    mask = df['regimen'].isin(regimens_features)
+    mask = ~df['regimen'].isin(regimens_features) # Get locations of new regimens not in original regimen list
     df.loc[mask, 'regimen'] = 'regimen_other' # if regimen not in the list, set it to regimen_other
+    
+    df1_set = set(np.ravel(df['regimen'].values))
+    df2_set = set(regimens_features)
+    missing_regimens = list(df2_set - df1_set)
+    
     df = pd.get_dummies(df, columns=['regimen'], prefix='', prefix_sep='') # one-hot encode
+    df[missing_regimens] = 0
     
     # for iR in range(len(regimens_features)):
     #     df = df.rename(columns={regimens_features[iR]: regimens_renamed[iR]})
@@ -88,13 +95,14 @@ def encode_regimens(df, regimen_data):
 
 def encode_intent(df):
 
-    intent_list = ['PALLIATIVE', 'NEOADJUVANT', 'ADJUVANT', 'CURATIVE']
-    intent_renamed = ['intent_' + s for s in intent_list]
+    intent_list = ['Palliative', 'Neoadjuvant', 'Adjuvant', 'Curative']
+    intent_renamed = ['intent_PALLIATIVE', 'intent_NEOADJUVANT', 'intent_ADJUVANT', 'intent_CURATIVE']
+    # intent_renamed = ['intent_' + s for s in intent_list]
     
     # for iR in range(len(intent_list)):
     #     df[intent_list[iR]]=0
         
-    df[intent_list] = 0
+    # df[intent_list] = 0
     
     # for iR2 in range(len(df)):
     #     if df['intent'][iR2] in intent_list:
@@ -102,7 +110,12 @@ def encode_intent(df):
             
     # df = df.drop('intent', axis=1)
     
+    df1_set = set(np.ravel(df['intent'].values))
+    df2_set = set(intent_list)
+    missing_intents = list(df2_set - df1_set)
+    
     df = pd.get_dummies(df, columns=['intent'], prefix='', prefix_sep='') # one-hot encode
+    df[missing_intents] = 0
     
     # for iR in range(len(intent_list)):
     #     df = df.rename(columns={intent_list[iR]: 'intent_'+intent_list[iR]})
@@ -232,12 +245,12 @@ def prep_symp_data(df):
         
     #     cols_with_one = np.where(df.index[df[reg_cols[iR]]].tolist())[0]
     #     df['regimen_other'][cols_with_one] = 1
-     
-    # # alternative way
-    # mask = df[reg_cols].any(axis=1)
-    # df.loc[mask, 'regimen_other'] = True
+      
+    mask = df[reg_cols].any(axis=1)
+    df.loc[mask, 'regimen_other'] = 1
 
-    df['regimen_other'] |= df[reg_cols].any(axis=1)    
+    # # alternative way
+    # df['regimen_other'] |= df[reg_cols].any(axis=1)    
     
     # Delete columns
     lab_Cols = ['bicarbonate', 'bicarbonate_is_missing']

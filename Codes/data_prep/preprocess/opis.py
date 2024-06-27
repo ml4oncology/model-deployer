@@ -7,45 +7,55 @@ import numpy as np
 import pandas as pd
 from datetime import timedelta 
 
-"""
-Args:
-included_regimens: selected EPR regimens during model training
-A2R_EPIC_GI_regimen_map: map between the old EPR regimens and the new EPIC regimens
-"""
 
 def get_treatment_data(
     chemo_data_file,
+    included_regimens: pd.DataFrame,
     A2R_EPIC_GI_regimen_map,
     dataPull_day    
 ) -> pd.DataFrame:
+    
+    """
+    Args:
+    included_regimens: selected EPR regimens during model training
+    A2R_EPIC_GI_regimen_map: map between the old EPR regimens and the new EPIC regimens
+    """
 
     # A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map[{'PROTOCOL_DISPLAY_NAME','Mapped_Name_All'}]
     A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map[['PROTOCOL_DISPLAY_NAME','Mapped_Name_All']]
     A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map.set_index('PROTOCOL_DISPLAY_NAME')['Mapped_Name_All'].to_dict()
     
     df = pd.read_csv(chemo_data_file)
-    df = process_treatment_data(df)
-    df = filter_treatment_data(df, A2R_EPIC_GI_regimen_map, dataPull_day)
+    df = process_treatment_data(df, dataPull_day)
+    df = filter_treatment_data(df, included_regimens, A2R_EPIC_GI_regimen_map, dataPull_day)
     return df
     
 
-def process_treatment_data(df):
+def process_treatment_data(df, dataPull_day):
     
     # clean column names
     df.columns = df.columns.str.lower()
+    
+    # order by id, scheduled date and regimen
+    df = df.sort_values(by=['research_id', 'tx_sched_date', 'regimen'])
+    
+    # Forwardfill height, weight and bsa
+    df = fwdfill(df)
+    
+    # Keep only treatments scheduled the following day (i.e. one day after data pull)
+    df = filter_chemo_Trt(df, dataPull_day)
+    
     col_map = {
         'research_id': 'mrn', 
-        'trt_date_utc': 'treatment_date', 
+        'tx_sched_date': 'treatment_date',  #'trt_date_utc': 'treatment_date',
         'first_trt_date_utc': 'first_treatment_date',
         'dose_ord_or_min_dose_ord': 'dose_ordered',
         'dose_given': 'given_dose'
     }
-    df = df.rename(columns=col_map)
-
-    # order by date and regimen
-    df = df.sort_values(by=['treatment_date', 'regimen'])
+    df = df.rename(columns=col_map) 
 
     # merge rows with same treatment days
+    df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
     df = merge_same_day_treatments(df) #, dosage
 
     # forward fill height, weight and body_surface_area
@@ -64,10 +74,13 @@ def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, d
     # df[['given_dose','given_dose_unit']] = df["given_dose"].str.split(" ", n=1, expand=True)
     # df[['dose_ordered','dose_ordered_unit']] = df["dose_ordered"].str.split(" ", n=1, expand=True)
     
+    # clean column names
+    regimens.columns = regimens.columns.str.lower()
+    
     # clean intent feature
     df['intent'] = df['intent'].replace('U', np.nan)
     
-    df = filter_chemo_Trt(df, dataPull_day)
+    # df = filter_chemo_Trt(df, dataPull_day)
     df = filter_regimens(df, regimens, A2R_EPIC_GI_regimen_map)
 
     # remove one-off duplicate rows (all values are same except for one, most likely due to human error)
@@ -95,6 +108,16 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
     return df
 
 
+def fwdfill(df):
+    
+    df['height'] = df.groupby('research_id')['height'].ffill()
+
+    df['weight'] = df.groupby('research_id')['weight'].ffill()
+
+    df['body_surface_area'] = df.groupby('research_id')['body_surface_area'].ffill()
+    
+    return df
+
 # def filter_drugs(df): #, drugs: pd.DataFrame
     
 #     # filter out rows where no dosage is given (dose = nan or 0)
@@ -119,7 +142,7 @@ def filter_chemo_Trt(df, dataPull_day):
     mask = df['tx_sched_date']==following_treatment_date
     df = df[mask]
     
-    df['treatment_date'] = df['tx_sched_date']
+    # df['treatment_date'] = df['tx_sched_date']
     
     return df
 

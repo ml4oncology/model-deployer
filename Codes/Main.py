@@ -4,13 +4,13 @@ Using the current directory
 
 """
 
-import pickle
+# import pickle
 import pandas as pd
 # import numpy as np
 
 #from checkData import check_data
 from data_prep.final_processing import final_process
-# from separate_data import separate_ptInfo_features
+from model_eval.getModelPredictions import get_model_output
 
 from tqdm import tqdm
 
@@ -19,14 +19,12 @@ warnings.filterwarnings("ignore")
 
 
 ############################ Make changes #################################
-ROOT_DIR = "C:/Users/..." # Select Root Directory
+ROOT_DIR = "C:/Users/Muammar/Desktop/MIRA_Test" # Select Root Directory
 data_root_dir = f'{ROOT_DIR}/Data'
 dataStart_day = '20240229' #date.today().strftime("%Y%m%d")
-dataEnd_day = '20240530' #date.today().strftime("%Y%m%d")
+dataEnd_day = '20240620' #date.today().strftime("%Y%m%d")
 
-dataPull_day = '20240318' #date.today().strftime("%Y%m%d")
-
-
+# dataPull_day = '20240318' #date.today().strftime("%Y%m%d")
 
 if __name__ == "__main__":
     
@@ -56,39 +54,38 @@ if __name__ == "__main__":
 
     
         ######################### Data Processing ################################
+        
+        ##******************** ED **********************##
         # Process and prepare data
-        prepared_data = final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model_dir, proj_name, model_name, dataPull_day)
+        prepared_data_ED = final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model_dir, proj_name, model_name[0], dataPull_day)
         
         # Separate patient mrn and trt_date from model features
         # patient_info, model_features = separate_ptInfo_features(prepared_data)
-        patient_info = prepared_data[['mrn', 'treatment_date']].copy()
-        model_features = prepared_data.drop(columns=['mrn', 'treatment_date'])
+        patient_info_ED = prepared_data_ED[['mrn', 'treatment_date']].copy()
+        model_features_ED = prepared_data_ED.drop(columns=['mrn', 'treatment_date'])
+        
+        ##******************** Symptoms **********************##
+        # Process and prepare data
+        prepared_data_symp = final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model_dir, proj_name, model_name[1], dataPull_day)
+        
+        # Separate patient mrn and trt_date from model features
+        # patient_info, model_features = separate_ptInfo_features(prepared_data)
+        patient_info_symp = prepared_data_symp[['mrn', 'treatment_date']].copy()
+        model_features_symp = prepared_data_symp.drop(columns=['mrn', 'treatment_date'])
                 
+        
         ######################### Model Evaluation ################################
         # load the model from disk
         # NOTE: XGBoost version 2.0.3 (pip install xgboost==2.0.3 --user)
-        UCE = 'ED_visit'
-        filename = 'XGB_' + UCE + '.pkl'
-        loaded_model = pickle.load(open(model_dir+'/'+filename, 'rb'))
         
-        # extraxt all the columns with order in which they were used; then reorder the pandas dataframe
-        cols_when_model_builds = loaded_model.get_booster().feature_names
-        model_features = model_features[cols_when_model_builds]
+        comb_ptInfo_pred_ed, comb_ptInfo_pred_symp = get_model_output(model_dir, info_data_dir,
+                                                                      patient_info_ED, model_features_ED,
+                                                                      patient_info_symp, model_features_symp)
         
-        # Generate predictions
-        xgb_preds_labels = loaded_model.predict(model_features)
-        xgb_preds_probabilities = loaded_model.predict_proba(model_features)[:,1]
+        comb_ptInfo_pred = comb_ptInfo_pred_ed.merge(comb_ptInfo_pred_symp, on=['mrn', 'treatment_date'])
         
-        # Combine patient info with predictions
-        comb_ptInfo_pred = patient_info.copy()
-        comb_ptInfo_pred['ed_pred_labels'] = xgb_preds_labels
-        comb_ptInfo_pred['ed_pred_probabilities_1'] = xgb_preds_probabilities
-        
-        # # Get most recent treatment dates for each patient
-        # pred_latestTrtDate = comb_ptInfo_pred.copy()
-        # pred_latestTrtDate = pred_latestTrtDate.loc[pred_latestTrtDate.groupby('mrn').treatment_date.idxmax()]
-        
-        # # Get treatment dates in the last 30 days from dataPull day
-        # pred_last30days = comb_ptInfo_pred.copy()
-        # pred_last30days = pred_last30days[pred_last30days["treatment_date"] >= (pd.to_datetime(dataPull_day) - pd.Timedelta(days=30))]
-        # # pred_last30days.sort_values(by=['mrn','treatment_date'])
+        if iD==0:
+            fullData_pred = comb_ptInfo_pred
+        else:
+            fullData_pred = pd.concat([fullData_pred, comb_ptInfo_pred], ignore_index=True, axis=0)
+            

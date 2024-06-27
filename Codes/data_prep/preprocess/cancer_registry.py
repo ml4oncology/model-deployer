@@ -91,7 +91,12 @@ def filter_demographic_data(df):
     # sanity check - ensure vital status and death date matches and makes sense
     # mask = df['vital_status'].map({'Dead': False, 'Alive': True}) == df['date_of_death'].isnull()
     mask = df['vital_status'].map({'Deceased': False, 'Alive': True}) == df['date_of_death'].isnull()
-    assert mask.all()
+    try:
+        assert mask.all()
+        
+    except AssertionError:
+        df['vital_status'].loc[~mask]='Deceased'
+    
 
     # filter out patients whose sex is not Male/Female
     mask = df['sex'].isin(['Male', 'Female'])

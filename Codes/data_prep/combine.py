@@ -219,7 +219,7 @@ Combine the features into one unified dataset
 
 def combine_features(lab, trt, dmg, sym, erv, code_dir):
      
-    with open(code_dir+'/config.yaml') as file:
+    with open(code_dir+'/data_prep/config.yaml') as file:
         cfg = yaml.safe_load(file)
         
     align_on = cfg['align_on'] 
