@@ -1,35 +1,39 @@
 """
 Script to load the models and generate predictions
-
 """
-
 import pickle
+
 import pandas as pd
 
 def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_ED, patient_info_symp, model_features_symp):
-    
+    ################ ED Visit Model Evaluation #####################
+    # TODO: create a config file that maps targets with the model names 
+    #       (i.e. ED_visit: [XGB_ED_visit.pkl, Mistral_ED_visit.pkl, etc])
+    # TODO: support trying out multiple different models per target
+
     # load the model from disk
     # NOTE: XGBoost version 2.0.3 (pip install xgboost==2.0.3 --user)
-    UCE = 'ED_visit'
-    filename = 'XGB_' + UCE + '.pkl'
-    loaded_model = pickle.load(open(model_dir+'/'+filename, 'rb'))
+    filename = 'XGB_ED_visit.pkl'
+    with open(f'{model_dir}/{filename}', "rb") as file:
+        model = pickle.load(file)
     
-    ED_Pred_Threshold = pd.read_excel(info_data_dir + '/ED_Prediction_Threshold.xlsx')
-    ED_Thres = ED_Pred_Threshold['Prediction_threshold'][0]
+    thresh_df = pd.read_excel(f'{info_data_dir}/ED_Prediction_Threshold.xlsx')
+    # ED_thresh = thresh_df.query('Label == ED_visit')['Prediction_threshold'][0]
+    ED_thresh = thresh_df['Prediction_threshold'][0]
     
     # extraxt all the columns with order in which they were used; then reorder the pandas dataframe
-    saved_model_features_ED = loaded_model.get_booster().feature_names
+    saved_model_features_ED = model.get_booster().feature_names
     model_features_ED = model_features_ED[saved_model_features_ED]
     
     # Generate predictions
-    xgb_preds_labels = loaded_model.predict(model_features_ED)
-    xgb_preds_probabilities = loaded_model.predict_proba(model_features_ED)[:,1]
+    xgb_pred_bools = model.predict(model_features_ED)
+    xgb_pred_probs = model.predict_proba(model_features_ED)[:,1]
     
     # Combine patient info with predictions
     comb_ptInfo_pred_ed = patient_info_ED.copy()
-    comb_ptInfo_pred_ed['ed_pred_labels'] = xgb_preds_labels
-    comb_ptInfo_pred_ed['ed_pred_probabilities_1'] = xgb_preds_probabilities
-    comb_ptInfo_pred_ed['ed_pred_labels_thresh'] = comb_ptInfo_pred_ed['ed_pred_probabilities_1'].apply(lambda x: 1 if x > ED_Thres else 0)
+    comb_ptInfo_pred_ed['ed_pred_labels'] = xgb_pred_bools
+    comb_ptInfo_pred_ed['ed_pred_probabilities_1'] = xgb_pred_probs
+    comb_ptInfo_pred_ed['ed_pred_labels_thresh'] = (comb_ptInfo_pred_ed['ed_pred_probabilities_1'] > ED_thresh).astype(int)
     
     # # Get most recent treatment dates for each patient
     # pred_latestTrtDate = comb_ptInfo_pred.copy()
@@ -38,20 +42,21 @@ def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_E
     # # Get treatment dates in the last 30 days from dataPull day
     # pred_last30days = comb_ptInfo_pred.copy()
     # pred_last30days = pred_last30days[pred_last30days["treatment_date"] >= (pd.to_datetime(dataPull_day) - pd.Timedelta(days=30))]
-    # # pred_last30days.sort_values(by=['mrn','treatment_date'])
+    # pred_last30days.sort_values(by=['mrn','treatment_date'])
     
     
     ################ Symptoms Model Evaluation #####################
     # load the model from disk
     filename = 'LGBM_symp.pkl'
-    loaded_models_symp = pickle.load(open(model_dir+'/'+filename, 'rb'))
+    with open(model_dir+'/'+filename, "rb") as file:
+        model = pickle.load(file)
     
     Symp_Pred_Thresholds = pd.read_excel(info_data_dir + '/Symptoms_Prediction_Thresholds.xlsx')
         
     symp_labels = ['Pain', 'Tired', 'Nausea', 'Depress', 'Anxious', 'Drowsy', 'Appetite', 'WellBeing', 'SOB']
     
     # Convert results to DataFrame, then set the index to the model and label
-    results_df = pd.DataFrame.from_dict(loaded_models_symp, orient='index')
+    results_df = pd.DataFrame.from_dict(model, orient='index')
     results_df.index.names = ['model', 'label']
     results_df.reset_index(inplace=True)
     
@@ -65,7 +70,6 @@ def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_E
         
         # Get the corresponding threshold
         label_thres = Symp_Pred_Thresholds.loc[Symp_Pred_Thresholds['Labels'] == label, 'Prediction_threshold'].iloc[0]
-        # print(label + ':' + str(label_thres))
         
         # fetch lgbm model
         best_lgbm_model = results_df[results_df['label'] == label]['best_model'].iloc[0]
@@ -86,7 +90,7 @@ def get_model_output(model_dir, info_data_dir, patient_info_ED, model_features_E
         pred_label = symp_labels[iL]+'_labels'
         probly_label = symp_labels[iL]+'__pred_probabilities_1'
         comb_ptInfo_pred_symp[probly_label] = y_pred_proba
-        comb_ptInfo_pred_symp[pred_label] = comb_ptInfo_pred_symp[probly_label].apply(lambda x: 1 if x > label_thres else 0)
+        comb_ptInfo_pred_symp[pred_label] = (comb_ptInfo_pred_symp[probly_label] > label_thres).astype(int)
     
     
     return comb_ptInfo_pred_ed, comb_ptInfo_pred_symp

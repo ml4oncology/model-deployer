@@ -25,8 +25,8 @@ def process_symptoms_data(df):
      
     df['patient_ecog'] = pd.to_numeric(df['patient_ecog'])
     
-    # # some patient_ecog entries have the following format: score-description
-    # # remove the descriptions and convert the scores to int
+    # some patient_ecog entries have the following format: score-description
+    # remove the descriptions and convert the scores to int
     # mask = df['patient_ecog'].str.contains('-')
     # df.loc[mask, 'patient_ecog'] = df.loc[mask, 'patient_ecog'].str.split('-').str[0]
     # df['patient_ecog'] = pd.to_numeric(df['patient_ecog'])
