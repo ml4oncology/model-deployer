@@ -41,7 +41,7 @@ if __name__ == "__main__":
     
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
     
-    output = []
+    outputs = []
     for i, data_pull_date in tqdm(enumerate(date_range)): 
     
         # TODO: maybe this should be if os.path.exists? Do we really need to check both files?
@@ -55,11 +55,11 @@ if __name__ == "__main__":
         
         ##******************** ED **********************##
         # Process and prepare data
-        prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, model_dir, proj_name, 'ED', data_pull_date)
+        prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED', data_pull_date)
 
         ##******************** Symptoms **********************##
         # Process and prepare data
-        prepared_data_symp = final_process(data_dir, info_dir, train_param_dir, code_dir, model_dir, proj_name, 'symp', data_pull_date)
+        prepared_data_symp = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'symp', data_pull_date)
                 
         
         ######################### Model Evaluation ################################        
@@ -69,8 +69,10 @@ if __name__ == "__main__":
         ##******************** Symptoms **********************##
         symp_result = get_symp_model_output(model_dir, info_dir, prepared_data_symp)
 
+        # TODO: figure out do we really want to merge by inner?
+        output = ED_visit_result.merge(symp_result, on=['mrn', 'treatment_date'])
+        assert len(ED_visit_result) == len(symp_result) == len(output)
+        outputs.append(output)
 
-        output.append(ED_visit_result.merge(symp_result, on=['mrn', 'treatment_date']))
-
-    output = pd.concat(output, ignore_index=True, axis=0)
-    output.to_csv(output_path)
+    outputs = pd.concat(outputs, ignore_index=True, axis=0)
+    outputs.to_csv(output_path)
