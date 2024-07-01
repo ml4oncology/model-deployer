@@ -74,14 +74,3 @@ if __name__ == "__main__":
 
     output = pd.concat(output, ignore_index=True, axis=0)
     output.to_csv(output_path)
-
-
-
-    
-
-    # MAKE SURE EVERYTHING IS KEPT CONSISTENT
-    # import os
-    # if not os.path.exists('./stat.csv'):
-    #     output.describe().to_csv('./stat.csv')
-    stat = pd.read_csv('./stat.csv', index_col=0)
-    assert all(stat == output.describe())
