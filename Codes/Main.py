@@ -7,7 +7,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from data_prep.final_processing import final_process
-from model_eval.evaluate import get_model_output
+from model_eval.inference import get_ED_visit_model_output, get_symp_model_output
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -51,37 +51,37 @@ if __name__ == "__main__":
             print(f"No Patient Data for: {data_pull_date}")
             continue
 
-    
-        # TODO: keep ED and symptoms separate throughout, for model evaluation as well
-        #       process ED data and evaluate ED visit, then process Symptoms data and evaluate symptoms deterioration
-        #       then combine all the predictions
-
         ######################### Data Processing ################################
         
         ##******************** ED **********************##
         # Process and prepare data
         prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, model_dir, proj_name, 'ED', data_pull_date)
-        
-        # Separate patient mrn and trt_date from model features
-        metadata_ED = prepared_data_ED[['mrn', 'treatment_date']].copy()
-        model_features_ED = prepared_data_ED.drop(columns=['mrn', 'treatment_date'])
-        
+
         ##******************** Symptoms **********************##
         # Process and prepare data
         prepared_data_symp = final_process(data_dir, info_dir, train_param_dir, code_dir, model_dir, proj_name, 'symp', data_pull_date)
-        
-        # Separate patient mrn and trt_date from model features
-        metadata_symp = prepared_data_symp[['mrn', 'treatment_date']].copy()
-        model_features_symp = prepared_data_symp.drop(columns=['mrn', 'treatment_date'])
                 
         
         ######################### Model Evaluation ################################        
-        comb_ptInfo_pred_ed, comb_ptInfo_pred_symp = get_model_output(
-            model_dir, info_dir, metadata_ED, model_features_ED, metadata_symp, model_features_symp
-        )
-        comb_ptInfo_pred = comb_ptInfo_pred_ed.merge(comb_ptInfo_pred_symp, on=['mrn', 'treatment_date'])
+        ##******************** ED **********************##
+        ED_visit_result = get_ED_visit_model_output(model_dir, info_dir, prepared_data_ED)
+        
+        ##******************** Symptoms **********************##
+        symp_result = get_symp_model_output(model_dir, info_dir, prepared_data_symp)
 
-        output.append(comb_ptInfo_pred)
-    
+
+        output.append(ED_visit_result.merge(symp_result, on=['mrn', 'treatment_date']))
+
     output = pd.concat(output, ignore_index=True, axis=0)
     output.to_csv(output_path)
+
+
+
+    
+
+    # MAKE SURE EVERYTHING IS KEPT CONSISTENT
+    # import os
+    # if not os.path.exists('./stat.csv'):
+    #     output.describe().to_csv('./stat.csv')
+    stat = pd.read_csv('./stat.csv', index_col=0)
+    assert all(stat == output.describe())
