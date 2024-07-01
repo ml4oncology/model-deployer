@@ -29,15 +29,6 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     df = encode_regimens(df, regimens)
     df = encode_intent(df)
     
-    # NOTE: avoid hardcoding stuff; also this is not needed because we have which feature we need directly from the models
-    # # Drop columns not currently used by model
-    # drop_cols = ['basophil', 'basophil_change', 'bicarbonate_change', #'bicarbonate',
-    #              'basophil_is_missing', #'bicarbonate_is_missing', 
-    #              'basophil_change_is_missing', 'bicarbonate_change_is_missing',
-    #              'date_of_birth', 'first_treatment_date']
-    #              # 'treatment_date','mrn']
-    # df = df.drop(columns=drop_cols)
-    
     # Remove / reorganize features for symptoms' models
     if model_name == 'symp':
         df = prep_symp_data(df)

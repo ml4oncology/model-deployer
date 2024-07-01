@@ -1,13 +1,10 @@
 """
 Module to preprocess DART (symptom data)
 """
-
 import pandas as pd
-import numpy as np
 
 
 def get_symptoms_data(esas_data_file):
-
     df = pd.read_csv(esas_data_file)
     df = df.rename(columns={'RESEARCH_ID': 'MRN'})
     df = filter_symptoms_data(df)
@@ -15,21 +12,11 @@ def get_symptoms_data(esas_data_file):
     return symp
 
 
-def process_symptoms_data(df):
-    
-    # get indices of ecog scores containing values with descriptions
-    ecog_locs = np.where(df['patient_ecog'].apply(lambda x: len(str(x)) > 3))[0]
-    if len(ecog_locs)>0:
-        for i1 in range(len(ecog_locs)):
-            df['patient_ecog'].iloc[ecog_locs[i1]] = df['patient_ecog'].iloc[ecog_locs[i1]][0]
-     
-    df['patient_ecog'] = pd.to_numeric(df['patient_ecog'])
-    
+def process_symptoms_data(df):    
     # some patient_ecog entries have the following format: score-description
     # remove the descriptions and convert the scores to int
-    # mask = df['patient_ecog'].str.contains('-')
-    # df.loc[mask, 'patient_ecog'] = df.loc[mask, 'patient_ecog'].str.split('-').str[0]
-    # df['patient_ecog'] = pd.to_numeric(df['patient_ecog'])
+    df['patient_ecog'] = df['patient_ecog'].astype(str).str.split('-').str[0]
+    df['patient_ecog'] = df['patient_ecog'].astype(float)
     
     # order by survey date
     df = df.sort_values(by='survey_date')
