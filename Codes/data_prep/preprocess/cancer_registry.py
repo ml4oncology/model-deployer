@@ -90,7 +90,7 @@ def filter_demographic_data(df):
         # Create new rows for the second site
         new_rows = df[mask].copy()
         new_rows["primary_site"] = new_rows["primary_site_2"]
-        df = df.append(new_rows, ignore_index=True)
+        df = pd.concat([df, new_rows], ignore_index=True) # DONT USE APPEND, ITS NOW DEPRECATED
     
         # Drop the temporary columns
         df = df.drop(['primary_site_1', 'primary_site_2'], axis=1)
