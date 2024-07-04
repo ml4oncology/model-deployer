@@ -44,7 +44,6 @@ if __name__ == "__main__":
     outputs = []
     for i, data_pull_date in tqdm(enumerate(date_range)): 
     
-        # TODO: maybe this should be if os.path.exists? Do we really need to check both files?
         chemo_file = f"{data_dir}/{proj_name}_chemo_{data_pull_date}.csv"
         diagnosis_file = f"{data_dir}/{proj_name}_diagnosis_{data_pull_date}.csv"
         if pd.read_csv(chemo_file).empty and pd.read_csv(diagnosis_file).empty:
@@ -64,12 +63,17 @@ if __name__ == "__main__":
         
         ######################### Model Evaluation ################################        
         ##******************** ED **********************##
-        ED_visit_result = get_ED_visit_model_output(model_dir, info_dir, prepared_data_ED)
+        # Load pre-defined prediction thresholds
+        thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold.xlsx')
+        thresholds = thresholds.set_index('Labels')['Prediction_threshold']
+        ED_visit_result = get_ED_visit_model_output(prepared_data_ED, thresholds, model_dir)
         
         ##******************** Symptoms **********************##
-        symp_result = get_symp_model_output(model_dir, info_dir, prepared_data_symp)
+         # Load pre-defined prediction thresholds
+        thresholds = pd.read_excel(f'{info_dir}/Symptoms_Prediction_Thresholds.xlsx')
+        thresholds = thresholds.set_index('Labels')['Prediction_threshold']
+        symp_result = get_symp_model_output(prepared_data_symp, thresholds, model_dir)
 
-        # TODO: figure out do we really want to merge by inner?
         output = ED_visit_result.merge(symp_result, on=['mrn', 'treatment_date'])
         assert len(ED_visit_result) == len(symp_result) == len(output)
         outputs.append(output)

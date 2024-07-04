@@ -6,7 +6,7 @@ import pickle
 import pandas as pd
 
 
-def get_ED_visit_model_output(model_dir, info_data_dir, df):
+def get_ED_visit_model_output(df, thresholds, model_dir):
     # TODO: support trying out multiple different models per target
     # TODO: create a config file that maps targets with the model names 
     #       (i.e. ED_visit: [XGB_ED_visit.pkl, Mistral_ED_visit.pkl, etc])
@@ -24,22 +24,17 @@ def get_ED_visit_model_output(model_dir, info_data_dir, df):
     X = df[model.get_booster().feature_names]
     
     # Generate predictions and combine with the result
-    result['ed_pred_class'] = model.predict(X) # takes whichever class has higher probabiltiy
     result['ed_pred_prob'] = model.predict_proba(X)[:, 1] # probability of the positive class
-
-    # Load pre-defined prediction thresholds
-    thresholds = pd.read_excel(f'{info_data_dir}/ED_Prediction_Threshold.xlsx')
-    thresholds = thresholds.set_index('Labels')['Prediction_threshold']
 
     # Generate binary predictions based on these pre-defined thresholds
     for label, thresh in thresholds.items():
         assert label == 'ED_visit'
-        result['ed_pred_class_thresh'] = (result['ed_pred_prob'] > thresh).astype(int)
+        result['ed_pred'] = (result['ed_pred_prob'] > thresh).astype(int)
 
     return result
 
 
-def get_symp_model_output(model_dir, info_data_dir, df):
+def get_symp_model_output(df, thresholds, model_dir):
     # TODO: support trying out multiple different models per target
     # TODO: create a config file that maps targets with the model names 
     #       (i.e. Pain: [LGBM_pain.pkl, Mistral_pain.pkl, etc])
@@ -55,10 +50,6 @@ def get_symp_model_output(model_dir, info_data_dir, df):
     lgbm_models = {symp: model[('lgbm', f'Label_{symp}_3pt_change')]['best_model'] for symp in symps}
     calib_models = {symp: model[('lgbm', f'Label_{symp}_3pt_change')]['best_ir_model'] for symp in symps}
 
-    # Load pre-defined prediction thresholds
-    thresholds = pd.read_excel(f'{info_data_dir}/Symptoms_Prediction_Thresholds.xlsx')
-    thresholds = thresholds.set_index('Labels')['Prediction_threshold']
-
     # Separate patient id and visit date information
     result = df[['mrn', 'treatment_date']].copy()
 
@@ -70,13 +61,12 @@ def get_symp_model_output(model_dir, info_data_dir, df):
         X = df[model.feature_name_]
         
         # Generate predictions and combine with patient info
-        # result[f'{symp}_pred_class'] = model.predict(X) # takes whichever class has higher probabiltiy
         pred_prob = model.predict_proba(X)[:, 1] # probability of the positive class
         calib_pred_prob = calibrator.transform(pred_prob)
         result[f'{symp}_pred_prob'] = calib_pred_prob
 
         # Generate binary predictions based on pre-defined thresholds
         thresh = thresholds[f'Label_{symp}_3pt_change']
-        result[f'{symp}_pred_class_thresh'] = (result[f'{symp}_pred_prob'] > thresh).astype(int)
+        result[f'{symp}_pred'] = (result[f'{symp}_pred_prob'] > thresh).astype(int)
 
     return result
