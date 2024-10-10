@@ -4,6 +4,7 @@ Module to preprocess laboratory test data, which includes hematology and biochem
 from typing import Optional
 
 import pandas as pd
+import re
 
 from data_prep.constants import obs_map
 
@@ -20,6 +21,15 @@ def get_lab_data(hema_data_file, biochem_data_file):
     lab = lab.rename(columns={'patientId': 'mrn'})
     return lab
 
+# Function to replace '<number' with 'number/2'
+def replace_less_than(value):
+    if isinstance(value, str) and value.startswith('<'):
+        # Extract the number after '<'
+        number = int(re.findall(r'\d+', value)[0])
+        # Divide the number by 2 and return as a string with '<'
+        return f'{number / 2}'
+    return value
+
 def process_lab_data(df):
     df['obs_datetime'] = pd.to_datetime(df['obs_datetime'], utc=True)
     df['obs_date'] = pd.to_datetime(df['obs_datetime'].dt.date)
@@ -31,9 +41,9 @@ def process_lab_data(df):
 
     # make each observation name into a new column
     df = df.pivot(index=['patientId', 'obs_date'], columns='obs_name', values='obs_value').reset_index()
-    
-    # replace lab test entries "<5" with 2.5
-    for col in df.columns: df[col] = df[col].replace('<5', 2.5)
+
+    # Apply the function to replace any '<' entries with half e.g. "<5" with 2.5
+    for col in df.columns: df[col] = df[col].apply(replace_less_than)
 
     df.columns.name = None
     return df

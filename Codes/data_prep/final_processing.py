@@ -82,4 +82,3 @@ def final_process(data_root_dir, info_data_dir, train_param_dir, code_dir, model
     
     return df
     
-

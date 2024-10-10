@@ -12,13 +12,15 @@ def get_treatment_data(
     chemo_data_file,
     included_regimens: pd.DataFrame,
     A2R_EPIC_GI_regimen_map,
-    dataPull_day    
+    dataPull_day = None    
 ) -> pd.DataFrame:
     
     """
     Args:
     included_regimens: selected EPR regimens during model training
     A2R_EPIC_GI_regimen_map: map between the old EPR regimens and the new EPIC regimens
+
+    ** Use 'dataPull_day = None' for inference, to get patients with completed treatment sessions
     """
 
     # A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map[{'PROTOCOL_DISPLAY_NAME','Mapped_Name_All'}]
@@ -33,21 +35,26 @@ def get_treatment_data(
 
 def process_treatment_data(df, dataPull_day):
     
+    trt_date = 'tx_sched_date'
+    
+    if dataPull_day==None:
+        trt_date = 'trt_date_utc'
+    
     # clean column names
     df.columns = df.columns.str.lower()
     
     # order by id, scheduled date and regimen
-    df = df.sort_values(by=['research_id', 'tx_sched_date', 'regimen'])
+    df = df.sort_values(by=['research_id', trt_date, 'regimen']) #'tx_sched_date'
     
-    # Forwardfill height, weight and bsa
-    df = fwdfill(df)
+    # forward fill height, weight and body_surface_area
+    for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('research_id')[col].ffill()
     
     # Keep only treatments scheduled the following day (i.e. one day after data pull)
     df = filter_chemo_Trt(df, dataPull_day)
     
     col_map = {
         'research_id': 'mrn', 
-        'tx_sched_date': 'treatment_date',  #'trt_date_utc': 'treatment_date',
+        trt_date: 'treatment_date',  #'tx_sched_date'; 'trt_date_utc': 'treatment_date',
         'first_trt_date_utc': 'first_treatment_date',
         'dose_ord_or_min_dose_ord': 'dose_ordered',
         'dose_given': 'given_dose'
@@ -57,9 +64,6 @@ def process_treatment_data(df, dataPull_day):
     # merge rows with same treatment days
     df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
     df = merge_same_day_treatments(df) #, dosage
-
-    # forward fill height, weight and body_surface_area
-    for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('mrn')[col].ffill()
 
     # forward and backward fill first treatment date
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
@@ -104,24 +108,21 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
     return df
 
 
-def fwdfill(df):
-    
-    df['height'] = df.groupby('research_id')['height'].ffill()
-    df['weight'] = df.groupby('research_id')['weight'].ffill()
-    df['body_surface_area'] = df.groupby('research_id')['body_surface_area'].ffill()
-    
-    return df
-
-
 def filter_chemo_Trt(df, dataPull_day):
     
-    # Keep treatments scheduled for the next day
-    df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
-    
-    #Treatment scheduled one day after data pull
-    following_treatment_date = pd.to_datetime(dataPull_day).date() + timedelta(days=1) 
-    mask = df['tx_sched_date']==following_treatment_date
-    df = df[mask]
+    if dataPull_day==None:
+        # keep rows with 'Completed' day_status
+        mask = df['day_status'] == 'Completed'
+        df = df[mask]
+        
+    else:     
+        # Keep treatments scheduled for the next day
+        df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
+        
+        #Treatment scheduled one day after data pull
+        following_treatment_date = pd.to_datetime(dataPull_day).date() + timedelta(days=1) 
+        mask = df['tx_sched_date']==following_treatment_date
+        df = df[mask]
     
     return df
 
