@@ -209,7 +209,7 @@ def prep_symp_data(df):
     
       
     mask = df[reg_cols].any(axis=1)
-    df.loc[mask, 'regimen_other'] = True
+    df.loc[mask, 'regimen_other'] = 1 #True
     # # alternative way
     # df['regimen_other'] |= df[reg_cols].any(axis=1)    
     
