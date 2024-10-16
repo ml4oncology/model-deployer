@@ -27,7 +27,7 @@ def replace_less_than(value):
         # Extract the number after '<'
         number = int(re.findall(r'\d+', value)[0])
         # Divide the number by 2 and return as a string with '<'
-        return f'{number / 2}'
+        return number / 2 #f'{number / 2}'
     return value
 
 def process_lab_data(df):
