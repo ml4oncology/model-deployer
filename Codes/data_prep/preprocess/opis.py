@@ -36,11 +36,6 @@ def get_treatment_data(
 def process_treatment_data(df, data_pull_day):
     
     trt_date = 'trt_date_utc' if data_pull_day is None else 'tx_sched_date'
-
-    # trt_date = 'tx_sched_date'
-    
-    # if data_pull_day is None:
-        # trt_date = 'trt_date_utc'
     
     # clean column names
     df.columns = df.columns.str.lower()
@@ -74,7 +69,7 @@ def process_treatment_data(df, data_pull_day):
     return df
 
 
-def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, dataPull_day) -> pd.DataFrame: #drugs: pd.DataFrame, 
+def filter_treatment_data(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map, data_pull_day) -> pd.DataFrame: #drugs: pd.DataFrame, 
     
     # clean column names
     regimens.columns = regimens.columns.str.lower()
@@ -112,7 +107,7 @@ def filter_regimens(df, regimens: pd.DataFrame, A2R_EPIC_GI_regimen_map) -> pd.D
 
 def filter_chemo_Trt(df, data_pull_day):
     
-    if data_pull_day==None:
+    if data_pull_day is None:
         # keep rows with 'Completed' day_status
         mask = df['day_status'] == 'Completed'
         df = df[mask]
