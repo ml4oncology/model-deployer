@@ -2,6 +2,7 @@
 Module to preprocess DART (symptom data)
 """
 import pandas as pd
+import numpy as np
 
 
 def get_symptoms_data(esas_data_file):
@@ -13,9 +14,16 @@ def get_symptoms_data(esas_data_file):
 
 
 def process_symptoms_data(df):    
+    # Found one instance of df['patient_ecog']= 'Not Applicable'
+    mask = df['patient_ecog'].isin(['Not Applicable'])  
+    df.loc[mask, 'patient_ecog'] = np.nan
+    # ecog_locs = np.where(df['patient_ecog'].apply(lambda x: (x!='nan') & (~x.isdigit())))[0]
+    # df['patient_ecog'][ecog_locs]='nan'
+    
     # some patient_ecog entries have the following format: score-description
     # remove the descriptions and convert the scores to int
     df['patient_ecog'] = df['patient_ecog'].astype(str).str.split('-').str[0]
+    
     df['patient_ecog'] = df['patient_ecog'].astype(float)
     
     # order by survey date

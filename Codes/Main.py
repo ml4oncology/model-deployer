@@ -16,10 +16,10 @@ warnings.filterwarnings("ignore")
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start-date', type=str, default='20240229') # date.today().strftime("%Y%m%d")
-    parser.add_argument('--end-date', type=str, default='20240319') # date.today().strftime("%Y%m%d")
+    parser.add_argument('--end-date', type=str, default='20240930') # date.today().strftime("%Y%m%d")
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
     parser.add_argument('--output-path', type=str, default='./pred.csv')
-    parser.add_argument('--root-dir', type=str, default='.') # "C:/Users/Muammar/Desktop/MIRA_Test"
+    parser.add_argument('--root-dir', type=str, default='.') # "C:/UHN CDI UoT/Github/model-deployer"
     args = parser.parse_args()
     return args
 
