@@ -309,9 +309,15 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored
     # df['red_cell_distribution_width']=np.nan
     
     #Drop columns
-    drop_cols = ['esas_constipation', 'esas_diarrhea', 'esas_sleep', 'activated_partial_thromboplastin_time',
-                 'carbohydrate_antigen_19-9', 'prothrombin_time_international_normalized_ratio']
-    df = df.drop(columns=drop_cols)
+    drop_cols = [
+        'esas_constipation', 
+        'esas_diarrhea', 
+        'esas_sleep', 
+        'activated_partial_thromboplastin_time',
+        'carbohydrate_antigen_19-9', 
+        'prothrombin_time_international_normalized_ratio'
+    ]
+    df = df.drop(columns=drop_cols, errors='ignore')
     
     return df
     

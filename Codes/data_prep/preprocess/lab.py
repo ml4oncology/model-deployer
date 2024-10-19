@@ -7,7 +7,7 @@ import pandas as pd
 import re
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
-from data_prep.constants import obs_map
+from make_clinical_dataset.constants import OBS_MAP
 
 def get_lab_data(hema_data_file, biochem_data_file, anchored):
 
@@ -17,12 +17,12 @@ def get_lab_data(hema_data_file, biochem_data_file, anchored):
     hema = pd.read_csv(hema_data_file)
     if anchored == 'weekly_':
         hema = hema.drop(columns=DROP_CLINIC_COLUMNS)
-    hema = filter_lab_data(hema, obs_name_map=obs_map['Hematology'])
+    hema = filter_lab_data(hema, obs_name_map=OBS_MAP['Hematology'])
 
     biochem = pd.read_csv(biochem_data_file)
     if anchored == 'weekly_':
         biochem = biochem.drop(columns=DROP_CLINIC_COLUMNS)
-    biochem = filter_lab_data(biochem, obs_name_map=obs_map['Biochemistry'])
+    biochem = filter_lab_data(biochem, obs_name_map=OBS_MAP['Biochemistry'])
 
     lab = pd.concat([hema, biochem])
     lab = process_lab_data(lab)

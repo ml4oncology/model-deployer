@@ -195,50 +195,26 @@ class PrepData:
         )
         return data
    
-    
-"""
-Prepare data for symptoms models
-"""
 
 def prep_symp_data(df):
+    """Prepare data for symptoms models
+    """
+    # lab columns to delete
+    lab_cols = ['bicarbonate', 'bicarbonate_is_missing']
 
-    # Regimen Columns to delete 
-    reg_cols = ['regimen_GI_FLOT _GASTRIC_', 'regimen_GI_FOLFNALIRI _COMP_', 
-                    'regimen_GI_FUFA C3 _GASTRIC_','regimen_GI_FUFA WEEKLY',
-                    'regimen_GI_GEM D1_8 _ CAPECIT', 'regimen_GI_PACLI WEEKLY']
+    # regimen columns to delete 
+    reg_cols = [
+        'regimen_GI_FLOT _GASTRIC_', 'regimen_GI_FOLFNALIRI _COMP_', 
+        'regimen_GI_FUFA C3 _GASTRIC_','regimen_GI_FUFA WEEKLY',
+        'regimen_GI_GEM D1_8 _ CAPECIT', 'regimen_GI_PACLI WEEKLY'
+    ]
     
-      
+    # reassign those regimens as other
     mask = df[reg_cols].any(axis=1)
     df.loc[mask, 'regimen_other'] = True
-    # # alternative way
+    # alternative way
     # df['regimen_other'] |= df[reg_cols].any(axis=1)    
-    
-    # Delete columns
-    lab_Cols = ['bicarbonate', 'bicarbonate_is_missing']
-    All_Del_Cols = reg_cols + lab_Cols
 
-    df = df.drop(columns=All_Del_Cols)
-
-    # clean column names; replacing space with an underscore
-    # col_map = {
-    #     'regimen_GI_CISPFU ANAL': 'regimen_GI_CISPFU_ANAL', 
-    #     'regimen_GI_CISPFU ESOPHAGEAL': 'regimen_GI_CISPFU_ESOPHAGEAL', 
-    #     'regimen_GI_FOLFOX _GASTRIC_': 'regimen_GI_FOLFOX__GASTRIC_',
-    #     'regimen_GI_FOLFOX_6 MOD': 'regimen_GI_FOLFOX_6_MOD',
-    #     'regimen_GI_FU CIV _ RT': 'regimen_GI_FU_CIV___RT',
-    #     'regimen_GI_FUFA C1_4_5 GASTRIC': 'regimen_GI_FUFA_C1_4_5_GASTRIC',
-    #     'regimen_GI_FUFA C2 _GASTRIC_': 'regimen_GI_FUFA_C2__GASTRIC_',
-    #     'regimen_GI_GEM 40MG_M2 2X_WK': 'regimen_GI_GEM_40MG_M2_2X_WK',
-    #     'regimen_GI_GEM 7_WEEKLY': 'regimen_GI_GEM_7_WEEKLY',
-    #     'regimen_GI_GEM D1_8': 'regimen_GI_GEM_D1_8',
-    #     'regimen_GI_GEM D1_8_15': 'regimen_GI_GEM_D1_8_15',
-    #     'regimen_GI_GEMCISP _BILIARY_': 'regimen_GI_GEMCISP__BILIARY_',
-    #     'regimen_GI_GEMCISP _PANCREAS_': 'regimen_GI_GEMCISP__PANCREAS_',
-    #     'regimen_GI_PACLI_CARBO WEEKX5': 'regimen_GI_PACLI_CARBO_WEEKX5'
-    # }
-    # df = df.rename(columns=col_map)
-    
+    df = df.drop(columns=reg_cols+lab_cols)
     df.columns = df.columns.str.replace(' ', '_')
-    
-
     return df
