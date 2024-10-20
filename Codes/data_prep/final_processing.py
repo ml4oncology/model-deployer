@@ -9,7 +9,6 @@ from ml_common.engineer import get_change_since_prev_session
 
 from data_prep.build import build_features
 from data_prep.combine import combine_features
-from data_prep.engineer import get_missingness_features
 from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData, prep_symp_data
 
 
@@ -23,8 +22,10 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     #Get changes between treatment sessions
     df =  get_change_since_prev_session(df)
     
-    #Get missingness features
-    df = get_missingness_features(df, anchored)
+    # Get missingness features
+    # NOTE: we filter out unused features later on in inference.py
+    # so easier to just calculate missingness for all columns
+    df[df.columns + "_is_missing"] = df.isnull()
     
     # Encode Regimens and Intent
     regimens = pd.read_excel(f'{info_dir}/GI_regimen_feature_list.xlsx')
