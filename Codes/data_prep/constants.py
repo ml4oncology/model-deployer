@@ -48,27 +48,6 @@ lab_cols = [
 ]
 symp_change_cols = [f'{col}_change' for col in symp_cols]
 lab_change_cols = [f'{col}_change' for col in lab_cols]
-drug_cols = [
-    '%_ideal_dose_given_CISPLATIN',
-    '%_ideal_dose_given_FLUOROURACIL', 
-    '%_ideal_dose_given_ETOPOSIDE',
-    '%_ideal_dose_given_CARBOPLATIN', 
-    '%_ideal_dose_given_OXALIPLATIN',
-    '%_ideal_dose_given_PEMBROLIZUMAB', 
-    '%_ideal_dose_given_NIVOLUMAB',
-    '%_ideal_dose_given_DOCETAXEL', 
-    '%_ideal_dose_given_CYCLOPHOSPHAMIDE',
-    '%_ideal_dose_given_DURVALUMAB', 
-    '%_ideal_dose_given_CETUXIMAB',
-    '%_ideal_dose_given_RAMUCIRUMAB', 
-    '%_ideal_dose_given_RALTITREXED',
-    '%_ideal_dose_given_IPILIMUMAB', 
-    '%_ideal_dose_given_MITOMYCIN',
-    '%_ideal_dose_given_PANITUMUMAB', 
-    '%_ideal_dose_given_CAPECITABINE',
-    '%_ideal_dose_given_ERLOTINIB',
-]
-
 DROP_CLINIC_COLUMNS = [
     'MRN','Lab Type', 'Collected Date', 'Result Date', 'Finalized Date', 
     'Last Update', 'Accession', 'Order ID','Specimen Source', 'Specimen Type',

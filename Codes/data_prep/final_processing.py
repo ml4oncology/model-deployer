@@ -5,9 +5,11 @@ import pickle
 
 import pandas as pd
 
+from ml_common.engineer import get_change_since_prev_session
+
 from data_prep.build import build_features
 from data_prep.combine import combine_features
-from data_prep.engineer import get_change_since_prev_session, get_missingness_features
+from data_prep.engineer import get_missingness_features
 from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData, prep_symp_data
 
 

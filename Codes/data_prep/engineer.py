@@ -11,23 +11,6 @@ from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_chang
 ###############################################################################
 # Engineering Features
 ###############################################################################
-def get_change_since_prev_session(df: pd.DataFrame) -> pd.DataFrame:
-    """Get change since last session"""
-    cols = symp_cols + lab_cols
-    change_cols = symp_change_cols + lab_change_cols
-    result = []
-    for mrn, group in tqdm(df.groupby('mrn')):
-        group[cols] = group[cols].apply(pd.to_numeric) # convert all columns of DataFrame # pd.to_numeric(s, errors='coerce')
-        change = group[cols] - group[cols].shift()
-        result.append(change.reset_index().to_numpy())
-    result = np.concatenate(result)
-
-    result = pd.DataFrame(result, columns=['index']+change_cols).set_index('index')
-    result.index = result.index.astype(int)
-    df = pd.concat([df, result], axis=1)
-
-    return df
-
 def get_missingness_features(df: pd.DataFrame, anchored) -> pd.DataFrame:
     
     if anchored == '':
