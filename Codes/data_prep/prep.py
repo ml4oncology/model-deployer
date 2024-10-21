@@ -3,44 +3,13 @@ Module to prepare data for model consumption
 """
 from typing import Optional
 
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 
-from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols  
+from ml_common.prep import Imputer
 
-class Imputer:
-    """Impute missing data by mean, mode, or median
-    """
-    def __init__(self):
-        self.impute_cols = {
-            'mean': lab_cols.copy() + lab_change_cols.copy(), 
-            'most_frequent': symp_cols.copy() + symp_change_cols.copy(),
-            'median': []
-        }
-        self.imputer = {'mean': None, 'most_frequent': None, 'median': None}
-
-    def impute(self, data: pd.DataFrame) -> pd.DataFrame:
-        # loop through the mean, mode, and median imputer
-        for strategy, imputer in self.imputer.items():
-            cols = self.impute_cols[strategy]
-            if len(cols)==0:
-                continue
-            
-            data[cols] = data[cols].apply(pd.to_numeric)
-            
-            if imputer is None:
-                # create the imputer and impute the data
-                imputer = SimpleImputer(strategy=strategy) 
-                data[cols] = imputer.fit_transform(data[cols])
-                self.imputer[strategy] = imputer # save the imputer
-            else:
-                # use existing imputer to impute the data
-                # print('Imputer Working!')
-                data[cols] = imputer.transform(data[cols])
-        return data
-    
+from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols   
 
 def fill_missing_data(df: pd.DataFrame) -> pd.DataFrame:
     """Fill missing data that can be filled heuristically"""
