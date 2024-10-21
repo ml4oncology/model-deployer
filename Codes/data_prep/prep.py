@@ -3,13 +3,11 @@ Module to prepare data for model consumption
 """
 from typing import Optional
 
-from sklearn.preprocessing import StandardScaler
 import numpy as np
 import pandas as pd
 
-from ml_common.prep import Imputer
+from ml_common.prep import PrepData
 
-from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols   
 
 def fill_missing_data(df: pd.DataFrame) -> pd.DataFrame:
     """Fill missing data that can be filled heuristically"""
@@ -63,33 +61,8 @@ def encode_intent(df):
     return df
             
 
-class PrepData:
+class PrepData(PrepData):
     """Prepare the data for model training"""
-    def __init__(self):
-        self.imp = Imputer() # imputer
-        self.scaler = None # normalizer
-        self.clip_thresh = None # outlier clippers
-
-        self.norm_cols = [
-            'height',
-            'weight',
-            'body_surface_area',
-            'cycle_number',
-            'age',
-            'visit_month_sin',
-            'visit_month_cos',
-            'line_of_therapy',
-            'days_since_starting_treatment',
-            'days_since_last_treatment',
-            'num_prior_EDs_within_5_years',
-            'days_since_prev_ED',
-        ] + symp_cols + lab_cols + lab_change_cols + symp_change_cols #drug_cols +
-        self.clip_cols = [
-            'height',
-            'weight',
-            'body_surface_area',
-        ] + lab_cols + lab_change_cols
-    
     def transform_data(
         self, 
         data,
@@ -127,17 +100,6 @@ class PrepData:
             # Scale the data based on the train data distribution
             data = self.normalize_data(data)
             
-        return data
-    
-    def normalize_data(self, data: pd.DataFrame) -> pd.DataFrame:
-        # use only the columns that exist in the data
-        norm_cols = [col for col in self.norm_cols if col in data.columns]
-        
-        if self.scaler is None:
-            self.scaler = StandardScaler()
-            data[norm_cols] = self.scaler.fit_transform(data[norm_cols])
-        else:
-            data[norm_cols] = self.scaler.transform(data[norm_cols])
         return data
     
     def clip_outliers(
