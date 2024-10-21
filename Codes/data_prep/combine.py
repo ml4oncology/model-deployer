@@ -17,6 +17,7 @@ from make_clinical_dataset.feat_eng import (
     get_visit_month_feature,
     get_years_diff, 
 )
+from ml_common.anchor import combine_feat_to_main_data
 
 
 def combine_demographic_to_main_data(
@@ -65,76 +66,10 @@ def combine_treatment_to_main_data(
     treatment_feats = treatment.drop(columns=drug_cols) # other treatment features
     treatment_feats['trt_date'] = treatment_feats['treatment_date'] # include treatment date as a feature
     treatment_feats['treatment_date'] = pd.to_datetime(treatment_feats['treatment_date']).dt.date
-    df = combine_feat_to_main_data(main, treatment_feats, main_date_col, 'treatment_date', **kwargs)
-    # df = combine_feat_to_main_data(df, treatment_drugs, main_date_col, 'treatment_date', keep='sum', **kwargs)
+    df = combine_feat_to_main_data(main, treatment_feats, main_date_col, 'treatment_date', parallelize=False, **kwargs)
+    # df = combine_feat_to_main_data(df, treatment_drugs, main_date_col, 'treatment_date', keep='sum', parallelize=False, **kwargs)
     df = df.rename(columns={'trt_date': 'treatment_date'})
     return df
-
-
-def combine_feat_to_main_data(
-    main: pd.DataFrame, 
-    feat: pd.DataFrame, 
-    main_date_col: str, 
-    feat_date_col: str,
-    time_window
-) -> pd.DataFrame:
-    """Combine feature(s) to the main dataset
-
-    Both main and feat should have mrn and date columns
-    """
-    result = feature_extractor(main, feat, main_date_col, feat_date_col, 'last', time_window)
-    cols = ['index'] + feat.columns.drop(['mrn', feat_date_col]).tolist()
-    result = pd.DataFrame(result, columns=cols).set_index('index')
-    df = main.join(result)
-    return df
-
-
-def feature_extractor(
-    main_df, 
-    feat_df, 
-    main_date_col: str,
-    feat_date_col: str,
-    keep: str = 'last', 
-    time_window: Tuple[int, int] = (-5,0)
-) -> list:
-    """Extract either the sum, first, or last forward filled feature measurements (lab tests, symptom scores, etc) 
-    taken within the time window (centered on each main visit date)
-
-    Args:
-        main_date_col: The column name of the main visit date
-        feat_date_col: The column name of the feature measurement date
-        time_window: The start and end of the window in terms of number of days after(+)/before(-) each visit date
-        keep: Which measurements taken within the time window to keep, either `sum`, `first`, `last`
-    """
-    if keep not in ['first', 'last', 'sum']:
-        raise ValueError('keep must be either first, last, or sum')
-    
-    lower_limit, upper_limit = time_window
-    keep_cols = feat_df.columns.drop(['mrn', feat_date_col])
-
-    results = []
-    for mrn, main_group in tqdm(main_df.groupby('mrn')):
-        feat_group = feat_df.query('mrn == @mrn')
-
-        for idx, date in main_group[main_date_col].items():
-            earliest_date = date + pd.Timedelta(days=lower_limit)
-            latest_date = date + pd.Timedelta(days=upper_limit)
-
-            mask = feat_group[feat_date_col].between(earliest_date, latest_date)
-            if not mask.any(): 
-                continue
-
-            feats = feat_group.loc[mask, keep_cols]
-            if keep == 'sum':
-                result = feats.sum()
-            elif keep == 'first':
-                result = feats.iloc[0]
-            elif keep == 'last':
-                result = feats.ffill().iloc[-1]
-
-            results.append([idx]+result.tolist())
-    
-    return results
 
 
 def combine_event_to_main_data(
@@ -226,12 +161,11 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored
        align_on = align_on[1]
        main_date_col = main_date_col[1]
 
-    if align_on == 'treatment-dates': # or align_on == 'clinic_date':
+    if align_on == 'treatment-dates':
         df = trt
     elif align_on == 'clinic_date':
         df = pd.DataFrame({'mrn': trt['mrn'].unique(), 'clinic_date': data_pull_date})
         df['clinic_date'] = pd.to_datetime(df['clinic_date']).dt.date
-        df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col='clinic_date', time_window=[-28, -1])
     elif align_on == 'weekly-mondays':
         #TODO: make mrn and start and end date selection robust (i.e. make them into command line arguments)
         mrns = trt['mrn'].unique()
@@ -244,9 +178,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored
     else:
         raise ValueError(f'Sorry, aligning features on {align_on} is not supported yet')
 
-    if align_on != 'treatment-dates' and align_on != 'clinic_date':
-        # logger.info('Combining treatment features...')
-        # df = combine_treatment_to_main_data(df, trt, main_date_col=main_date_col, time_window=(-7,0))
+    if align_on != 'treatment-dates':
         df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
             
     # Convert to date format
@@ -265,44 +197,24 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored
     sym['survey_date'] = sym['survey_date'].dt.strftime('%Y-%m-%d')
     sym['survey_date'] = pd.to_datetime(sym['survey_date'])
     
-    # logger.info('Combining demographic features...')
     df = combine_demographic_to_main_data(main=df, demographic=dmg, main_date_col=main_date_col)
     
-    # logger.info('Combining symptom features...')
-    # df = combine_feat_to_main_data(
-    #     main=df, feat=sym, main_date_col=main_date_col, feat_date_col='survey_date', 
-    #     time_window=(-cfg['symp_lookback_window'],0)
-    # )
     df = combine_feat_to_main_data(
         main=df, feat=sym, main_date_col=main_date_col, feat_date_col='survey_date', 
-        time_window=[-30, -1]
+        parallelize=False, time_window=[-30, -1]
     )
     
-    # logger.info('Combining lab features...')
-    # df = combine_feat_to_main_data(
-    #     main=df, feat=lab, main_date_col=main_date_col, feat_date_col='obs_date', 
-    #     time_window=(-cfg['lab_lookback_window'],0)
-    # )
     df = combine_feat_to_main_data(
         main=df, feat=lab, main_date_col=main_date_col, feat_date_col='obs_date', 
-        time_window=[-7, -1]
+        parallelize=False, time_window=[-7, -1]
     )
 
-    # logger.info('Combining ED visit features...')
-    # df = combine_event_to_main_data(
-    #     main=df, event=erv, main_date_col='treatment_date', event_date_col='event_date', event_name='ED_visit',
-    #     lookback_window=cfg['ed_visit_lookback_window']
-    # )
     df = combine_event_to_main_data(
         main=df, event=erv, main_date_col=main_date_col, event_date_col='event_date', event_name='ED_visit',
         lookback_window=cfg['ed_visit_lookback_window']
     )
     
-    # logger.info('Combining engineered features...')
-    # df = combine_perc_dose_to_main_data(main=df, included_drugs=included_drugs)
     df = add_engineered_features(df, date_col=main_date_col)
-    
-    # df.to_parquet(f'{output_dir}/{output_filename}.parquet.gzip', compression='gzip', index=False)
     
     # Add missing feature
     df['hematocrit']=np.nan
