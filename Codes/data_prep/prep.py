@@ -101,30 +101,6 @@ class PrepData(PrepData):
             data = self.normalize_data(data)
             
         return data
-    
-    def clip_outliers(
-        self, 
-        data: pd.DataFrame, 
-        lower_percentile: float = 0.001, 
-        upper_percentile: float = 0.999
-    ) -> pd.DataFrame:
-        """Clip the upper and lower percentiles for the columns indicated below
-        """
-        # use only the columns that exist in the data
-        cols = [col for col in self.clip_cols if col in data.columns]
-        
-        data[cols] = data[cols].apply(pd.to_numeric)
-        
-        if self.clip_thresh is None:
-            percentiles = [lower_percentile, upper_percentile]
-            self.clip_thresh = data[cols].quantile(percentiles)
-            
-        data[cols] = data[cols].clip(
-            lower=self.clip_thresh.loc[lower_percentile], 
-            upper=self.clip_thresh.loc[upper_percentile], 
-            axis=1
-        )
-        return data
    
 
 def prep_symp_data(df):
