@@ -11,6 +11,7 @@ from typing import Tuple
 
 import yaml
 
+from make_clinical_dataset.combine import combine_event_to_main_data
 from make_clinical_dataset.feat_eng import (
     get_days_since_last_event, 
     get_line_of_therapy, 
@@ -72,65 +73,6 @@ def combine_treatment_to_main_data(
     return df
 
 
-def combine_event_to_main_data(
-    main: pd.DataFrame, 
-    event: pd.DataFrame, 
-    main_date_col: str, 
-    event_date_col: str, 
-    event_name: str,
-    lookback_window: int = 5,
-    **kwargs
-) -> pd.DataFrame:
-    """Combine features extracted from event data (emergency department visits, hospitalization, etc) to the main 
-    dataset
-
-    Args:
-        main_date_col: The column name of the main visit date
-        event_date_col: The column name of the event date
-        lookback_window: The lookback window in terms of number of years from treatment date to extract event features
-    """
-    result = event_feature_extractor(main, event, main_date_col, event_date_col, lookback_window)
-    cols = ['index', f'num_prior_{event_name}s_within_{lookback_window}_years', f'days_since_prev_{event_name}']
-    result = pd.DataFrame(result, columns=cols).set_index('index')
-    df = main.join(result)
-    return df
-
-
-def event_feature_extractor(
-    main_df, 
-    event_df, 
-    main_date_col: str,
-    event_date_col: str,
-    lookback_window: int = 5,
-) -> list:
-    """Extract features from the event data, namely
-    1. Number of days since the most recent event
-    2. Number of prior events in the past X years
-
-    Args:
-        main_date_col: The column name of the main visit date
-        event_date_col: The column name of the event date
-        lookback_window: The lookback window in terms of number of years from treatment date to extract event features
-    """
-
-    result = []
-    for mrn, main_group in tqdm(main_df.groupby('mrn')):
-        event_group = event_df.query('mrn == @mrn')
-        event_dates = event_group[event_date_col]
-        
-        for idx, date in main_group[main_date_col].items():
-            # get feature
-            # 1. number of days since closest event prior to main visit date
-            # 2. number of events within the lookback window 
-            earliest_date = date - pd.Timedelta(days=lookback_window*365)
-            mask = event_dates.between(earliest_date, date, inclusive='left')
-            if mask.any():
-                N_prior_events = mask.sum()
-                N_days = (date - event_dates[mask].iloc[-1]).days
-                result.append([idx, N_prior_events, N_days])
-    return result
-
-
 def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFrame:
     df = get_visit_month_feature(df, col=date_col)
     df['line_of_therapy'] = df.groupby('mrn', group_keys=False).apply(get_line_of_therapy)
@@ -142,12 +84,9 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
     return df
 
 
-"""
-Combine the features into one unified dataset
-"""
-
 def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored):
-     
+    """Combine the features into one unified dataset
+    """
     with open(code_dir+'/data_prep/config.yaml') as file:
         cfg = yaml.safe_load(file)
         
@@ -211,7 +150,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored
 
     df = combine_event_to_main_data(
         main=df, event=erv, main_date_col=main_date_col, event_date_col='event_date', event_name='ED_visit',
-        lookback_window=cfg['ed_visit_lookback_window']
+        parallelize=False, lookback_window=cfg['ed_visit_lookback_window']
     )
     
     df = add_engineered_features(df, date_col=main_date_col)
