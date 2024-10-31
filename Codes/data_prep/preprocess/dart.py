@@ -5,8 +5,13 @@ import pandas as pd
 import numpy as np
 
 
-def get_symptoms_data(esas_data_file):
+def get_symptoms_data(esas_data_file, clinic_anchored):
     df = pd.read_csv(esas_data_file)
+    if clinic_anchored == 'weekly_':
+        df = df.drop(columns=['MRN','Lab Type', 'Collected Date',
+        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
+        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
+        'Organism', 'Comment', 'Narrative'])
     df = df.rename(columns={'RESEARCH_ID': 'MRN'})
     df = filter_symptoms_data(df)
     symp = process_symptoms_data(df)

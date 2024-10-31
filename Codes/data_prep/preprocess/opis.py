@@ -12,15 +12,14 @@ def get_treatment_data(
     chemo_data_file,
     included_regimens: pd.DataFrame,
     A2R_EPIC_GI_regimen_map,
-    data_pull_day = None    
+    data_pull_day = None, 
+    clinic_anchored = ''    
 ) -> pd.DataFrame:
     
     """
     Args:
     included_regimens: selected EPR regimens during model training
     A2R_EPIC_GI_regimen_map: map between the old EPR regimens and the new EPIC regimens
-
-    ** Use 'data_pull_day = None' for inference, to get patients with completed treatment sessions
     """
 
     # A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map[{'PROTOCOL_DISPLAY_NAME','Mapped_Name_All'}]
@@ -28,14 +27,24 @@ def get_treatment_data(
     A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map.set_index('PROTOCOL_DISPLAY_NAME')['Mapped_Name_All'].to_dict()
     
     df = pd.read_csv(chemo_data_file)
-    df = process_treatment_data(df, data_pull_day)
+    if clinic_anchored == 'weekly_':
+        df = df.drop(columns=['MRN','Lab Type', 'Collected Date',
+        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
+        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
+        'Organism', 'Comment', 'Narrative'])
+    df = process_treatment_data(df, data_pull_day, clinic_anchored)
     df = filter_treatment_data(df, included_regimens, A2R_EPIC_GI_regimen_map, data_pull_day)
     return df
     
 
-def process_treatment_data(df, data_pull_day):
+def process_treatment_data(df, data_pull_day, clinic_anchored):
     
     trt_date = 'trt_date_utc' if data_pull_day is None else 'tx_sched_date'
+    
+    # trt_date = 'tx_sched_date'
+    
+    # if data_pull_day==None:
+    #     trt_date = 'trt_date_utc'
     
     # clean column names
     df.columns = df.columns.str.lower()
@@ -44,10 +53,13 @@ def process_treatment_data(df, data_pull_day):
     df = df.sort_values(by=['research_id', trt_date, 'regimen']) #'tx_sched_date'
     
     # forward fill height, weight and body_surface_area
-    for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('research_id')[col].ffill()
+    for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('research_id')[col].ffill().bfill()
     
     # Keep only treatments scheduled the following day (i.e. one day after data pull)
-    df = filter_chemo_Trt(df, data_pull_day)
+    if clinic_anchored == '':
+        df = filter_chemo_Trt(df, data_pull_day)
+    else:
+        df = filter_clinic_treatments(df, data_pull_day)
     
     col_map = {
         'research_id': 'mrn', 
@@ -60,7 +72,7 @@ def process_treatment_data(df, data_pull_day):
 
     # merge rows with same treatment days
     df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
-    df = merge_same_day_treatments(df) #, dosage
+    df = merge_same_day_treatments(df, clinic_anchored) #, dosage
 
     # forward and backward fill first treatment date
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
@@ -112,6 +124,10 @@ def filter_chemo_Trt(df, data_pull_day):
         mask = df['day_status'] == 'Completed'
         df = df[mask]
         
+        # # keep rows with 'Completed' cycle_status
+        # mask = df['cycle_status'] == 'Completed'
+        # df = df[mask]
+        
     else:     
         # Keep treatments scheduled for the next day
         df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
@@ -124,10 +140,30 @@ def filter_chemo_Trt(df, data_pull_day):
     return df
 
 
+def filter_clinic_treatments(df, data_pull_day):
+    
+    df['clinic_date'] = pd.to_datetime(data_pull_day)
+    
+    mask = df['day_status'] == 'Planned'
+    df = df[mask]
+    
+    df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
+    df['clinic_date'] = pd.to_datetime(df['clinic_date']).dt.date
+    
+    # filter out clinic visits where the next treatment session does not occur within 5 days
+    clinic_date = pd.to_datetime(data_pull_day).date()
+    fiveday_treatment_date = clinic_date + timedelta(days=5) 
+    mask = df["tx_sched_date"].between(
+        clinic_date, fiveday_treatment_date
+    )
+    df = df[mask]
+    
+    return df
+
 ###############################################################################
 # Mergers
 ###############################################################################
-def merge_same_day_treatments(df): # dosage: pd.DataFrame
+def merge_same_day_treatments(df, clinic_anchored): # dosage: pd.DataFrame
     """
     Collapse multiples rows with the same treatment day into one
 
@@ -135,28 +171,54 @@ def merge_same_day_treatments(df): # dosage: pd.DataFrame
     """
     
     format_regimens = lambda regs: ' && '.join(sorted(set(regs)))
-    df = (
-        df
-        .groupby(['mrn', 'treatment_date'])
-        .agg({
-            # handle conflicting data by 
-            # 1. join them togehter
-            'regimen': format_regimens,
-            # 2. take the mean 
-            'height': 'mean',
-            'weight': 'mean',
-            'body_surface_area': 'mean',
-            # 3. output True if any are True
-            
-            # if two treatments (the old regimen and new regimen) overlap on same day, use data associated with the 
-            # most recent regimen 
-            # NOTE: examples found thru df.groupby(['mrn', 'treatment_date'])['first_treatment_date'].nunique() > 1
-            'cycle_number': 'min',
-            'first_treatment_date': 'max',
-            
-            # TODO: come up with robust way to handle the following conflicts
-            'intent': 'first'
-        })
-    )
+    if clinic_anchored == '':
+        df = (
+            df
+            .groupby(['mrn', 'treatment_date'])
+            .agg({
+                # handle conflicting data by 
+                # 1. join them togehter
+                'regimen': format_regimens,
+                # 2. take the mean 
+                'height': 'mean',
+                'weight': 'mean',
+                'body_surface_area': 'mean',
+                # 3. output True if any are True
+                
+                # if two treatments (the old regimen and new regimen) overlap on same day, use data associated with the 
+                # most recent regimen 
+                # NOTE: examples found thru df.groupby(['mrn', 'treatment_date'])['first_treatment_date'].nunique() > 1
+                'cycle_number': 'min',
+                'first_treatment_date': 'max',
+                
+                # TODO: come up with robust way to handle the following conflicts
+                'intent': 'first'
+            })
+        )
+    else:
+        df = (
+            df
+            .groupby(['mrn', 'clinic_date'])
+            .agg({
+                # handle conflicting data by 
+                # 1. join them togehter
+                'regimen': format_regimens,
+                # 2. take the mean 
+                'height': 'mean',
+                'weight': 'mean',
+                'body_surface_area': 'mean',
+                # 3. output True if any are True
+                
+                # if two treatments (the old regimen and new regimen) overlap on same day, use data associated with the 
+                # most recent regimen 
+                # NOTE: examples found thru df.groupby(['mrn', 'treatment_date'])['first_treatment_date'].nunique() > 1
+                'cycle_number': 'min',
+                'first_treatment_date': 'max',
+                'treatment_date': 'max',
+                
+                # TODO: come up with robust way to handle the following conflicts
+                'intent': 'first'
+            })
+        )
     df = df.reset_index()
     return df

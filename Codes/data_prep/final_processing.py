@@ -11,18 +11,18 @@ from data_prep.engineer import get_change_since_prev_session, get_missingness_fe
 from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData, prep_symp_data
 
 
-def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, model_name, data_pull_day):
+def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, model_name, data_pull_day, clinic_anchored):
     # Build Features
-    dart, canc_reg, opis, lab, er_visit = build_features(data_dir, info_dir, proj_name, data_pull_day)
+    dart, canc_reg, opis, lab, er_visit = build_features(data_dir, info_dir, proj_name, data_pull_day, clinic_anchored)
     
     # Combine Features
-    df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir)
+    df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir, clinic_anchored)
     
     #Get changes between treatment sessions
     df =  get_change_since_prev_session(df)
     
     #Get missingness features
-    df = get_missingness_features(df)
+    df = get_missingness_features(df, clinic_anchored)
     
     # Encode Regimens and Intent
     regimens = pd.read_excel(f'{info_dir}/GI_regimen_feature_list.xlsx')
@@ -33,10 +33,15 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     if model_name == 'symp':
         df = prep_symp_data(df)
     
+    if not clinic_anchored=='weekly_':
+        prep = pickle.load(open(f'{train_param_dir}/prep_{model_name}_trt_anchored-2024-10-15.pkl', 'rb'))
+    else:
+        prep = pickle.load(open(f'{train_param_dir}/prep_{model_name}_clinic_anchored-2024-10-15.pkl', 'rb'))
+        
     # Transofrm Data: Impute, Normalize and Clip
-    clip_threshold = pickle.load(open(f'{train_param_dir}/clip_thresh_{model_name}.pkl', 'rb'))
-    normalize_scaler = pickle.load(open(f'{train_param_dir}/scaler_{model_name}.pkl', 'rb'))
-    data_imputer = pickle.load(open(f'{train_param_dir}/imputer_{model_name}.pkl', 'rb'))
+    clip_threshold = prep.clip_thresh
+    normalize_scaler = prep.scaler
+    data_imputer = prep.imp.imputer
     
     # extraxt all the columns with order in which they were used; then reorder the pandas dataframe
     # also extract all thresholds from training data for data transformation

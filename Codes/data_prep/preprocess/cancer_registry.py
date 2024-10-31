@@ -5,9 +5,14 @@ Module to preprocess the cancer registry (cancer patient demographic data) - DIA
 import pandas as pd
 
 
-def get_demographic_data(diagnosis_data_file, info_data_dir):
+def get_demographic_data(diagnosis_data_file, info_data_dir, clinic_anchored):
 
     df = pd.read_csv(diagnosis_data_file)
+    if clinic_anchored == 'weekly_':
+        df = df.drop(columns=['MRN','Lab Type', 'Collected Date',
+        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
+        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
+        'Organism', 'Comment', 'Narrative'])
     df = filter_demographic_data(df)
     df = process_demographic_data(df, info_data_dir)
     return df

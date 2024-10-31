@@ -210,16 +210,25 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
 Combine the features into one unified dataset
 """
 
-def combine_features(lab, trt, dmg, sym, erv, code_dir):
+def combine_features(lab, trt, dmg, sym, erv, code_dir, clinic_anchored):
      
     with open(code_dir+'/data_prep/config.yaml') as file:
         cfg = yaml.safe_load(file)
         
     align_on = cfg['align_on'] 
     main_date_col = cfg['main_date_col'] 
+    
+    if clinic_anchored == '':
+       align_on = align_on[0]
+       main_date_col = main_date_col[0]
+    else:
+       align_on = align_on[1]
+       main_date_col = main_date_col[1]
 
-    if align_on == 'treatment-dates':
+    if align_on == 'treatment-dates' or align_on == 'clinic_date':
         df = trt
+    # elif align_on == 'clinic_date':
+    #     df = trt
     elif align_on == 'weekly-mondays':
         #TODO: make mrn and start and end date selection robust (i.e. make them into command line arguments)
         mrns = trt['mrn'].unique()
@@ -232,9 +241,10 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir):
     else:
         raise ValueError(f'Sorry, aligning features on {align_on} is not supported yet')
 
-    if align_on != 'treatment-dates':
+    if align_on != 'treatment-dates' and align_on != 'clinic_date':
         # logger.info('Combining treatment features...')
-        df = combine_treatment_to_main_data(df, trt, main_date_col=main_date_col, time_window=(-7,0))
+        # df = combine_treatment_to_main_data(df, trt, main_date_col=main_date_col, time_window=(-7,0))
+        df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
     
     # Convert to date format
     df[main_date_col] = pd.to_datetime(df[main_date_col])
@@ -245,6 +255,9 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir):
     df['first_treatment_date'] = df['first_treatment_date'].dt.strftime('%Y-%m-%d')
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
     
+    if clinic_anchored != '':
+        df['treatment_date'] = pd.to_datetime(df['treatment_date'])
+    
     sym['survey_date'] = pd.to_datetime(sym['survey_date'])
     sym['survey_date'] = sym['survey_date'].dt.strftime('%Y-%m-%d')
     sym['survey_date'] = pd.to_datetime(sym['survey_date'])
@@ -253,20 +266,32 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir):
     df = combine_demographic_to_main_data(main=df, demographic=dmg, main_date_col=main_date_col)
     
     # logger.info('Combining symptom features...')
+    # df = combine_feat_to_main_data(
+    #     main=df, feat=sym, main_date_col=main_date_col, feat_date_col='survey_date', 
+    #     time_window=(-cfg['symp_lookback_window'],0)
+    # )
     df = combine_feat_to_main_data(
         main=df, feat=sym, main_date_col=main_date_col, feat_date_col='survey_date', 
-        time_window=(-cfg['symp_lookback_window'],0)
+        time_window=[-30, -1]
     )
     
     # logger.info('Combining lab features...')
+    # df = combine_feat_to_main_data(
+    #     main=df, feat=lab, main_date_col=main_date_col, feat_date_col='obs_date', 
+    #     time_window=(-cfg['lab_lookback_window'],0)
+    # )
     df = combine_feat_to_main_data(
         main=df, feat=lab, main_date_col=main_date_col, feat_date_col='obs_date', 
-        time_window=(-cfg['lab_lookback_window'],0)
+        time_window=[-7, -1]
     )
 
     # logger.info('Combining ED visit features...')
+    # df = combine_event_to_main_data(
+    #     main=df, event=erv, main_date_col='treatment_date', event_date_col='event_date', event_name='ED_visit',
+    #     lookback_window=cfg['ed_visit_lookback_window']
+    # )
     df = combine_event_to_main_data(
-        main=df, event=erv, main_date_col='treatment_date', event_date_col='event_date', event_name='ED_visit',
+        main=df, event=erv, main_date_col=main_date_col, event_date_col='event_date', event_name='ED_visit',
         lookback_window=cfg['ed_visit_lookback_window']
     )
     

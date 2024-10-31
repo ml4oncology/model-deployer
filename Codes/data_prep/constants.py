@@ -216,6 +216,12 @@ obs_map = {
     }
 }
 
+demo_cols = [
+    'height',
+    'weight',
+    'body_surface_area',
+]
+
 symp_cols = [
     'esas_pain',
     'esas_tiredness',

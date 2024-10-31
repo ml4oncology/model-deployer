@@ -8,12 +8,22 @@ import re
 
 from data_prep.constants import obs_map
 
-def get_lab_data(hema_data_file, biochem_data_file):
+def get_lab_data(hema_data_file, biochem_data_file, clinic_anchored):
 
     hema = pd.read_csv(hema_data_file)
+    if clinic_anchored == 'weekly_':
+        hema = hema.drop(columns=['MRN','Lab Type', 'Collected Date',
+        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
+        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
+        'Organism', 'Comment', 'Narrative'])
     hema = filter_lab_data(hema, obs_name_map=obs_map['Hematology'])
 
     biochem = pd.read_csv(biochem_data_file)
+    if clinic_anchored == 'weekly_':
+        biochem = biochem.drop(columns=['MRN','Lab Type', 'Collected Date',
+        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
+        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
+        'Organism', 'Comment', 'Narrative'])
     biochem = filter_lab_data(biochem, obs_name_map=obs_map['Biochemistry'])
 
     lab = pd.concat([hema, biochem])
@@ -41,7 +51,7 @@ def process_lab_data(df):
 
     # make each observation name into a new column
     df = df.pivot(index=['patientId', 'obs_date'], columns='obs_name', values='obs_value').reset_index()
-
+    
     # Apply the function to replace any '<' entries with half e.g. "<5" with 2.5
     for col in df.columns: df[col] = df[col].apply(replace_less_than)
 
