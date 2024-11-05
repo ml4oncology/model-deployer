@@ -5,6 +5,7 @@ from typing import Optional
 
 import pandas as pd
 import re
+from data_prep.constants import DROP_CLINIC_COLUMNS
 
 from data_prep.constants import obs_map
 
@@ -12,18 +13,12 @@ def get_lab_data(hema_data_file, biochem_data_file, clinic_anchored):
 
     hema = pd.read_csv(hema_data_file)
     if clinic_anchored == 'weekly_':
-        hema = hema.drop(columns=['MRN','Lab Type', 'Collected Date',
-        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
-        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
-        'Organism', 'Comment', 'Narrative'])
+        hema = hema.drop(columns=DROP_CLINIC_COLUMNS)
     hema = filter_lab_data(hema, obs_name_map=obs_map['Hematology'])
 
     biochem = pd.read_csv(biochem_data_file)
     if clinic_anchored == 'weekly_':
-        biochem = biochem.drop(columns=['MRN','Lab Type', 'Collected Date',
-        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
-        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
-        'Organism', 'Comment', 'Narrative'])
+        biochem = biochem.drop(columns=DROP_CLINIC_COLUMNS)
     biochem = filter_lab_data(biochem, obs_name_map=obs_map['Biochemistry'])
 
     lab = pd.concat([hema, biochem])

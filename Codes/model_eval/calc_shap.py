@@ -20,7 +20,7 @@ def plot_shap_values_for_patient(patient_idx, shap_values, feature_names, result
     top_features = feature_names[sorted_idx][:top_n]
     top_shap_values = patient_shap_values[sorted_idx][:top_n]
     
-    clinic_date=datetime.strftime(result['clinic_date'][patient_idx], '%d_%b_%y')
+    clinic_date=datetime.strftime(result['clinic_date'].iloc[patient_idx], '%d_%b_%y')
     
     # Create a bar plot for the top N most important features
     plt.figure(figsize=(10, 6))
@@ -30,7 +30,7 @@ def plot_shap_values_for_patient(patient_idx, shap_values, feature_names, result
     plt.gca().invert_yaxis()  # Invert y-axis to have the highest value on top
     plt.show()
     
-    plt_name = f"{fig_dir}/fig_{patient_idx}_{result['mrn'][patient_idx]}_{clinic_date}.png"
+    plt_name = f"{fig_dir}/fig_{patient_idx}_{result['mrn'].iloc[patient_idx]}_{clinic_date}.png"
     plt.savefig(plt_name, bbox_inches='tight')
     plt.close()
 

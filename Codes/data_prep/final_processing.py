@@ -16,7 +16,7 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     dart, canc_reg, opis, lab, er_visit = build_features(data_dir, info_dir, proj_name, data_pull_day, clinic_anchored)
     
     # Combine Features
-    df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir, clinic_anchored)
+    df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir, data_pull_day, clinic_anchored)
     
     #Get changes between treatment sessions
     df =  get_change_since_prev_session(df)

@@ -6,7 +6,7 @@ Module to preprocess OPIS (systemic therapy treatment data) - CHEMO
 import numpy as np
 import pandas as pd
 from datetime import timedelta 
-
+from data_prep.constants import DROP_CLINIC_COLUMNS
 
 def get_treatment_data(
     chemo_data_file,
@@ -28,10 +28,7 @@ def get_treatment_data(
     
     df = pd.read_csv(chemo_data_file)
     if clinic_anchored == 'weekly_':
-        df = df.drop(columns=['MRN','Lab Type', 'Collected Date',
-        'Result Date', 'Finalized Date', 'Last Update', 'Accession', 'Order ID',
-        'Specimen Source', 'Specimen Type', 'Test Type', 'Lab Status', 'Agency',
-        'Organism', 'Comment', 'Narrative'])
+        df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = process_treatment_data(df, data_pull_day, clinic_anchored)
     df = filter_treatment_data(df, included_regimens, A2R_EPIC_GI_regimen_map, data_pull_day)
     return df
@@ -39,7 +36,7 @@ def get_treatment_data(
 
 def process_treatment_data(df, data_pull_day, clinic_anchored):
     
-    trt_date = 'trt_date_utc' if data_pull_day is None else 'tx_sched_date'
+    trt_date = 'trt_date_utc' if data_pull_day is None or clinic_anchored=='weekly_' else 'tx_sched_date'
     
     # trt_date = 'tx_sched_date'
     
@@ -58,8 +55,8 @@ def process_treatment_data(df, data_pull_day, clinic_anchored):
     # Keep only treatments scheduled the following day (i.e. one day after data pull)
     if clinic_anchored == '':
         df = filter_chemo_Trt(df, data_pull_day)
-    else:
-        df = filter_clinic_treatments(df, data_pull_day)
+    # else:
+    #     df = filter_clinic_treatments(df, data_pull_day)
     
     col_map = {
         'research_id': 'mrn', 
@@ -72,7 +69,7 @@ def process_treatment_data(df, data_pull_day, clinic_anchored):
 
     # merge rows with same treatment days
     df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
-    df = merge_same_day_treatments(df, clinic_anchored) #, dosage
+    # df = merge_same_day_treatments(df, clinic_anchored) #, dosage
 
     # forward and backward fill first treatment date
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
@@ -150,7 +147,7 @@ def filter_clinic_treatments(df, data_pull_day):
     df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
     df['clinic_date'] = pd.to_datetime(df['clinic_date']).dt.date
     
-    # filter out clinic visits where the next treatment session does not occur within 5 days
+    # filter out rows where next scheduled treatment session does not occur within 5 days of clinic visit
     clinic_date = pd.to_datetime(data_pull_day).date()
     fiveday_treatment_date = clinic_date + timedelta(days=5) 
     mask = df["tx_sched_date"].between(

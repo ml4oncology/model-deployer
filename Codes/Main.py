@@ -5,6 +5,7 @@ import argparse
 
 import pandas as pd
 from tqdm import tqdm
+from collections import defaultdict
 
 from data_prep.final_processing import final_process
 from model_eval.inference import get_ED_visit_model_output #, get_symp_model_output
@@ -47,96 +48,37 @@ if __name__ == "__main__":
     
     thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold_Updated.xlsx')
     
-    results_treatment = []
-    results_clinic = []
-    # prepared_data_ED_dfs = []
+    postfix_map = {'treatment': '', 'clinic': 'weekly_'}
+    output_map = {'treatment': treatment_output, 'clinic': clinic_output}
+    results = defaultdict(list)
+
     for i, data_pull_date in tqdm(enumerate(date_range)): 
-    
+
         print(f'**** Processing #{i}: {data_pull_date} *****')
-        
-        ######################### Treatment anchored ################################
-        
-        chemo_file_treatment = f"{data_dir}/{proj_name}_chemo_{clinic_anchored_files[0]}{data_pull_date}.csv"
-        diagnosis_file_treatment = f"{data_dir}/{proj_name}_diagnosis_{clinic_anchored_files[0]}{data_pull_date}.csv"
-        if not pd.read_csv(chemo_file_treatment).empty and not pd.read_csv(diagnosis_file_treatment).empty:
-            
-            ######################### Data Processing ################################
-            ##******************** ED **********************##
-            # Process and prepare data
-            prepared_treatment_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED', data_pull_date, clinic_anchored_files[0])
-
-            prepared_treatment_data_ED['regimen_GI_IRINO Q3W']=False
-            prepared_treatment_data_ED['regimen_GI_PACLITAXEL']=False
-            # prepared_treatment_data_ED['regimen_GI_CISPFU _ TRAS_MAIN_']=False
-            # prepared_treatment_data_ED['regimen_GI_GEMCAP']=False
-            
-            # ##******************** Symptoms **********************##
-            # # Process and prepare data
-            # prepared_treatment_data_symp = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'symp', data_pull_date, clinic_anchored_files[0])
-            
-            ######################### Model Evaluation ################################        
-            ##******************** ED **********************##
-            # Load pre-defined prediction thresholds
-            thresholds_treatment = thresholds[thresholds['Model_anchor']=='Treatment-anchored']
-            thresholds_treatment = thresholds_treatment.set_index('Labels')['Prediction_threshold']
-            ED_treatment_result = get_ED_visit_model_output(prepared_treatment_data_ED, thresholds_treatment, model_dir, fig_dir, clinic_anchored_files[0])
-            
-            # ##******************** Symptoms **********************##
-            #  # Load pre-defined prediction thresholds
-            # thresholds = pd.read_excel(f'{info_dir}/Symptoms_Prediction_Thresholds.xlsx')
-            # thresholds = thresholds.set_index('Labels')['Prediction_threshold']
-            # symp_treatment_result = get_symp_model_output(prepared_treatment_data_symp, thresholds, model_dir, clinic_anchored_files[0])
-
-            # output_treatment = ED_treatment_result.merge(symp_treatment_result, on=['mrn', 'treatment_date'])
-            # assert len(ED_treatment_result) == len(symp_treatment_result) == len(output_treatment)
-            results_treatment.append(ED_treatment_result) #output_treatment
-            
-        else:
-            print(f"No Patient Treatment Data for: {data_pull_date}")
-            
-        ########################### Clinic anchored #################################
-        
-        chemo_file_clinic = f"{data_dir}/{proj_name}_chemo_{clinic_anchored_files[1]}{data_pull_date}.csv"
-        diagnosis_file_clinic = f"{data_dir}/{proj_name}_diagnosis_{clinic_anchored_files[1]}{data_pull_date}.csv"
-        if not pd.read_csv(chemo_file_clinic).empty and not pd.read_csv(diagnosis_file_clinic).empty:
-            
-            ######################### Data Processing ################################
-            ##******************** ED **********************##
-            # Process and prepare data
-            prepared_clinic_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED', data_pull_date, clinic_anchored_files[1])
-            
-            prepared_clinic_data_ED['regimen_GI_IRINO Q3W']=False
-            prepared_clinic_data_ED['regimen_GI_PACLITAXEL']=False
-            # prepared_clinic_data_ED['regimen_GI_CISPFU _ TRAS_MAIN_']=False
-            # prepared_clinic_data_ED['regimen_GI_GEMCAP']=False
-            
-            # ##******************** Symptoms **********************##
-            # # Process and prepare data
-            # prepared_clinic_data_symp = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'symp', data_pull_date, clinic_anchored_files[1])
-            
-            ######################### Model Evaluation ################################        
-            ##******************** ED **********************##
-            # Load pre-defined prediction thresholds
-            thresholds_clinic = thresholds[thresholds['Model_anchor']=='Clinic-anchored']
-            thresholds_clinic = thresholds_clinic.set_index('Labels')['Prediction_threshold']
-            ED_clinic_result = get_ED_visit_model_output(prepared_clinic_data_ED, thresholds_clinic, model_dir, fig_dir, clinic_anchored_files[1])
-            
-            # ##******************** Symptoms **********************##
-            #  # Load pre-defined prediction thresholds
-            # thresholds = pd.read_excel(f'{info_dir}/Symptoms_Prediction_Thresholds.xlsx')
-            # thresholds = thresholds.set_index('Labels')['Prediction_threshold']
-            # symp_clinic_result = get_symp_model_output(prepared_clinic_data_symp, thresholds, model_dir, clinic_anchored_files[1])
-
-            # output_clinic = ED_treatment_result.merge(symp_clinic_result, on=['mrn', 'clinic_date'])
-            # assert len(ED_treatment_result) == len(symp_clinic_result) == len(output_clinic)
-            results_clinic.append(ED_clinic_result) # output_clinic
-            
-        else:
-            print(f"No Patient Clinic Data for: {data_pull_date}")
-       
     
-    results_treatment = pd.concat(results_treatment, ignore_index=True, axis=0)
-    results_treatment.to_csv(treatment_output)
+        for anchor in ['treatment', 'clinic']:
+            postfix = postfix_map[anchor]
+            chemo_file_treatment = f"{data_dir}/{proj_name}_chemo_{postfix}{data_pull_date}.csv"
+            diagnosis_file_treatment = f"{data_dir}/{proj_name}_diagnosis_{postfix}{data_pull_date}.csv"
+            if not pd.read_csv(chemo_file_treatment).empty and not pd.read_csv(diagnosis_file_treatment).empty:
+                ######################### Data Processing ################################
+                ##******************** ED **********************##
+                # Process and prepare data
+                prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED', data_pull_date, postfix)
+                prepared_data_ED['regimen_GI_IRINO Q3W'] = False
+                prepared_data_ED['regimen_GI_PACLITAXEL'] = False
     
-    results_clinic = pd.concat(results_clinic, ignore_index=True, axis=0)
-    results_clinic.to_csv(clinic_output)
+                ######################### Model Evaluation ################################        
+                ##******************** ED **********************##
+                # Load pre-defined prediction thresholds
+                thresholds_treatment = thresholds[thresholds['Model_anchor']==f'{anchor.title()}-anchored']
+                thresholds_treatment = thresholds_treatment.set_index('Labels')['Prediction_threshold']
+                ED_treatment_result = get_ED_visit_model_output(prepared_data_ED, thresholds_treatment, model_dir, fig_dir, anchor)
+    
+                results[anchor].append(ED_treatment_result)
+            else:
+                print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
+    
+    for anchor in ['treatment', 'clinic']:
+        results[anchor] = pd.concat(results[anchor], ignore_index=True, axis=0)
+        results[anchor].to_csv(output_map[anchor])

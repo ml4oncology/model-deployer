@@ -64,8 +64,9 @@ def combine_treatment_to_main_data(
     treatment_drugs = treatment[drug_cols + ['mrn', 'treatment_date']] # treatment drug dosage features
     treatment_feats = treatment.drop(columns=drug_cols) # other treatment features
     treatment_feats['trt_date'] = treatment_feats['treatment_date'] # include treatment date as a feature
+    treatment_feats['treatment_date'] = pd.to_datetime(treatment_feats['treatment_date']).dt.date
     df = combine_feat_to_main_data(main, treatment_feats, main_date_col, 'treatment_date', **kwargs)
-    df = combine_feat_to_main_data(df, treatment_drugs, main_date_col, 'treatment_date', keep='sum', **kwargs)
+    # df = combine_feat_to_main_data(df, treatment_drugs, main_date_col, 'treatment_date', keep='sum', **kwargs)
     df = df.rename(columns={'trt_date': 'treatment_date'})
     return df
 
@@ -74,7 +75,7 @@ def combine_feat_to_main_data(
     main: pd.DataFrame, 
     feat: pd.DataFrame, 
     main_date_col: str, 
-    feat_date_col: str, 
+    feat_date_col: str,
     time_window
 ) -> pd.DataFrame:
     """Combine feature(s) to the main dataset
@@ -210,7 +211,7 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
 Combine the features into one unified dataset
 """
 
-def combine_features(lab, trt, dmg, sym, erv, code_dir, clinic_anchored):
+def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, clinic_anchored):
      
     with open(code_dir+'/data_prep/config.yaml') as file:
         cfg = yaml.safe_load(file)
@@ -225,10 +226,12 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, clinic_anchored):
        align_on = align_on[1]
        main_date_col = main_date_col[1]
 
-    if align_on == 'treatment-dates' or align_on == 'clinic_date':
+    if align_on == 'treatment-dates': # or align_on == 'clinic_date':
         df = trt
-    # elif align_on == 'clinic_date':
-    #     df = trt
+    elif align_on == 'clinic_date':
+        df = pd.DataFrame({'mrn': trt['mrn'].unique(), 'clinic_date': data_pull_date})
+        df['clinic_date'] = pd.to_datetime(df['clinic_date']).dt.date
+        df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col='clinic_date', time_window=[-28, -1])
     elif align_on == 'weekly-mondays':
         #TODO: make mrn and start and end date selection robust (i.e. make them into command line arguments)
         mrns = trt['mrn'].unique()
@@ -245,7 +248,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, clinic_anchored):
         # logger.info('Combining treatment features...')
         # df = combine_treatment_to_main_data(df, trt, main_date_col=main_date_col, time_window=(-7,0))
         df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
-    
+            
     # Convert to date format
     df[main_date_col] = pd.to_datetime(df[main_date_col])
     df[main_date_col] = df[main_date_col].dt.strftime('%Y-%m-%d')
