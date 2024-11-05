@@ -22,7 +22,7 @@ def get_ED_visit_model_output(df, thresholds, model_dir, fig_dir, anchor):
         
     if anchor == "clinic":
         filename = 'XGB_ED_visit_clinic_anchored-2024-10-15.pkl'
-        meta_cols = ['mrn', 'treatment_date','clinic_date']
+        meta_cols = ['mrn', 'tx_sched_date','clinic_date']
     elif anchor == "treatment":
         filename = 'RF_ED_visit_trt_anchored-2024-10-15.pkl'
         meta_cols = ['mrn', 'treatment_date']
@@ -39,8 +39,6 @@ def get_ED_visit_model_output(df, thresholds, model_dir, fig_dir, anchor):
     # Drop any row that contains NaN => to work with RF 
     X = X.dropna() # drop rows with nan values
     result = result[result.index.isin(X.index)]
-    
-    # X = X.reset_index()
     
     # Generate predictions and combine with the result
     result['ed_pred_prob'] = predict(model, X) # probability of the positive class

@@ -61,7 +61,7 @@ def combine_treatment_to_main_data(
     """
     cols = treatment.columns
     drug_cols = cols[cols.str.startswith('drug_')].tolist()
-    treatment_drugs = treatment[drug_cols + ['mrn', 'treatment_date']] # treatment drug dosage features
+    # treatment_drugs = treatment[drug_cols + ['mrn', 'treatment_date']] # treatment drug dosage features
     treatment_feats = treatment.drop(columns=drug_cols) # other treatment features
     treatment_feats['trt_date'] = treatment_feats['treatment_date'] # include treatment date as a feature
     treatment_feats['treatment_date'] = pd.to_datetime(treatment_feats['treatment_date']).dt.date
