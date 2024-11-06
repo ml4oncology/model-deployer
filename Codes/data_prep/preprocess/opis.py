@@ -63,6 +63,8 @@ def process_treatment_data(df, data_pull_day, clinic_anchored):
     df = df.rename(columns=col_map) 
 
     df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
+    if clinic_anchored == '':
+        df = merge_same_day_treatments(df) #, dosage
     
     # forward and backward fill first treatment date
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
@@ -151,4 +153,41 @@ def filter_clinic_treatments(df, data_pull_day):
     )
     df = df[mask]
     
+    return df
+
+###############################################################################
+# Mergers
+###############################################################################
+def merge_same_day_treatments(df): # dosage: pd.DataFrame
+    """
+    Collapse multiples rows with the same treatment day into one
+
+    Essential for aggregating the different drugs administered on the same day
+    """
+    
+    format_regimens = lambda regs: ' && '.join(sorted(set(regs)))
+    df = (
+        df
+        .groupby(['mrn', 'treatment_date'])
+        .agg({
+            # handle conflicting data by 
+            # 1. join them togehter
+            'regimen': format_regimens,
+            # 2. take the mean 
+            'height': 'mean',
+            'weight': 'mean',
+            'body_surface_area': 'mean',
+            # 3. output True if any are True
+            
+            # if two treatments (the old regimen and new regimen) overlap on same day, use data associated with the 
+            # most recent regimen 
+            # NOTE: examples found thru df.groupby(['mrn', 'treatment_date'])['first_treatment_date'].nunique() > 1
+            'cycle_number': 'min',
+            'first_treatment_date': 'max',
+            
+            # TODO: come up with robust way to handle the following conflicts
+            'intent': 'first'
+        })
+    )
+    df = df.reset_index()
     return df
