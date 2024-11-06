@@ -211,7 +211,7 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
 Combine the features into one unified dataset
 """
 
-def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, clinic_anchored):
+def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored):
      
     with open(code_dir+'/data_prep/config.yaml') as file:
         cfg = yaml.safe_load(file)
@@ -219,7 +219,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, clinic_a
     align_on = cfg['align_on'] 
     main_date_col = cfg['main_date_col'] 
     
-    if clinic_anchored == '':
+    if anchored == '':
        align_on = align_on[0]
        main_date_col = main_date_col[0]
     else:
@@ -258,7 +258,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, clinic_a
     df['first_treatment_date'] = df['first_treatment_date'].dt.strftime('%Y-%m-%d')
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
     
-    if clinic_anchored != '':
+    if anchored != '':
         df['treatment_date'] = pd.to_datetime(df['treatment_date'])
     
     sym['survey_date'] = pd.to_datetime(sym['survey_date'])

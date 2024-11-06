@@ -5,9 +5,13 @@ import pandas as pd
 import numpy as np
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
-def get_symptoms_data(esas_data_file, clinic_anchored):
+def get_symptoms_data(esas_data_file, anchored):
+    
+    # anchored = '': treatment anchored files
+    # anchored = 'weekly_': clinic anchored files
+    
     df = pd.read_csv(esas_data_file)
-    if clinic_anchored == 'weekly_':
+    if anchored == 'weekly_':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = df.rename(columns={'RESEARCH_ID': 'MRN'})
     df = filter_symptoms_data(df)

@@ -42,12 +42,13 @@ if __name__ == "__main__":
     code_dir = f'{ROOT_DIR}/Archive/Codes' # TODO: load config.yaml here (the only time code_dir is used)
     model_dir = f'{ROOT_DIR}/Models' 
     fig_dir = f'{ROOT_DIR}/Archive/Figures'
-    clinic_anchored_files = ['','weekly_']
     
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
     
     thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold_Updated.xlsx')
     
+    # treatment anchored files named as eg. AIM2REDUCE_hematology_20241104
+    # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_20241104
     postfix_map = {'treatment': '', 'clinic': 'weekly_'}
     output_map = {'treatment': treatment_output, 'clinic': clinic_output}
     results = defaultdict(list)

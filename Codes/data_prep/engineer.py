@@ -28,9 +28,9 @@ def get_change_since_prev_session(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-def get_missingness_features(df: pd.DataFrame, clinic_anchored) -> pd.DataFrame:
+def get_missingness_features(df: pd.DataFrame, anchored) -> pd.DataFrame:
     
-    if clinic_anchored == '':
+    if anchored == '':
         target_cols = symp_cols + lab_cols + lab_change_cols + symp_change_cols
     else:
         target_cols = symp_cols + lab_cols + lab_change_cols + symp_change_cols + demo_cols

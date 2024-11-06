@@ -13,13 +13,16 @@ def get_treatment_data(
     included_regimens: pd.DataFrame,
     A2R_EPIC_GI_regimen_map,
     data_pull_day = None, 
-    clinic_anchored = ''    
+    anchored = ''    
 ) -> pd.DataFrame:
     
     """
     Args:
     included_regimens: selected EPR regimens during model training
     A2R_EPIC_GI_regimen_map: map between the old EPR regimens and the new EPIC regimens
+    
+    anchored = '': treatment anchored files
+    anchored = 'weekly_': clinic anchored files
     """
 
     # A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map[{'PROTOCOL_DISPLAY_NAME','Mapped_Name_All'}]
@@ -27,16 +30,16 @@ def get_treatment_data(
     A2R_EPIC_GI_regimen_map = A2R_EPIC_GI_regimen_map.set_index('PROTOCOL_DISPLAY_NAME')['Mapped_Name_All'].to_dict()
     
     df = pd.read_csv(chemo_data_file)
-    if clinic_anchored == 'weekly_':
+    if anchored == 'weekly_':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
-    df = process_treatment_data(df, data_pull_day, clinic_anchored)
+    df = process_treatment_data(df, data_pull_day, anchored)
     df = filter_treatment_data(df, included_regimens, A2R_EPIC_GI_regimen_map, data_pull_day)
     return df
     
 
-def process_treatment_data(df, data_pull_day, clinic_anchored):
+def process_treatment_data(df, data_pull_day, anchored):
     
-    trt_date = 'trt_date_utc' if data_pull_day is None or clinic_anchored=='weekly_' else 'tx_sched_date'
+    trt_date = 'trt_date_utc' if data_pull_day is None or anchored=='weekly_' else 'tx_sched_date'
     
     # clean column names
     df.columns = df.columns.str.lower()
@@ -48,7 +51,7 @@ def process_treatment_data(df, data_pull_day, clinic_anchored):
     for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('research_id')[col].ffill().bfill()
     
     # Keep only treatments scheduled the following day (i.e. one day after data pull)
-    if clinic_anchored == '':
+    if anchored == '':
         df = filter_chemo_Trt(df, data_pull_day)
     else:
         df = filter_clinic_treatments(df, data_pull_day)
@@ -63,7 +66,7 @@ def process_treatment_data(df, data_pull_day, clinic_anchored):
     df = df.rename(columns=col_map) 
 
     df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
-    if clinic_anchored == '':
+    if anchored == '':
         df = merge_same_day_treatments(df) #, dosage
     
     # forward and backward fill first treatment date
