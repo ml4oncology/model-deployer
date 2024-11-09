@@ -6,7 +6,7 @@ from tqdm import tqdm
 import numpy as np
 import pandas as pd
 
-from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols
+from data_prep.constants import lab_cols, lab_change_cols, symp_cols, symp_change_cols, demo_cols
 
 ###############################################################################
 # Engineering Features
@@ -28,9 +28,12 @@ def get_change_since_prev_session(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-def get_missingness_features(df: pd.DataFrame) -> pd.DataFrame:
+def get_missingness_features(df: pd.DataFrame, anchored) -> pd.DataFrame:
     
-    target_cols = symp_cols + lab_cols + lab_change_cols + symp_change_cols
+    if anchored == '':
+        target_cols = symp_cols + lab_cols + lab_change_cols + symp_change_cols
+    else:
+        target_cols = symp_cols + lab_cols + lab_change_cols + symp_change_cols + demo_cols
     
     for col in target_cols: df[f'{col}_is_missing'] = df[col].isnull()
         

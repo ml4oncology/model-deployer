@@ -3,14 +3,19 @@ Module to preprocess emergency department visit (old pull) / emergency room data
 """
 
 import pandas as pd
-
+from data_prep.constants import DROP_CLINIC_COLUMNS
 
 ###############################################################################
 # ER (Emergency Room - EPIC)
 ###############################################################################
-def get_emergency_room_data(ed_data_file) -> pd.DataFrame:
-
+def get_emergency_room_data(ed_data_file, anchored) -> pd.DataFrame:
+    
+    # anchored = '': treatment anchored files
+    # anchored = 'weekly_': clinic anchored files
+    
     df = pd.read_csv(ed_data_file)
+    if anchored == 'weekly_':
+        df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = clean_emergency_data(df)
     df = process_emergency_room_data(df)
     return df
