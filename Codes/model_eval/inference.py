@@ -21,10 +21,10 @@ def get_ED_visit_model_output(df, thresholds, model_dir, fig_dir, anchor):
     # NOTE: Ensure XGBoost version 2.0.3 is installed (pip install xgboost==2.0.3 --user)
         
     if anchor == "clinic":
-        filename = 'XGB_ED_visit_clinic_anchored-2024-10-15.pkl'
+        filename = 'XGB_ED_visit_clinic_anchored.pkl'
         meta_cols = ['mrn', 'tx_sched_date','clinic_date']
     elif anchor == "treatment":
-        filename = 'RF_ED_visit_trt_anchored-2024-10-15.pkl'
+        filename = 'RF_ED_visit_trt_anchored.pkl'
         meta_cols = ['mrn', 'treatment_date']
     
     with open(f'{model_dir}/{filename}', "rb") as file:

@@ -19,9 +19,9 @@ def parse_args():
     parser.add_argument('--start-date', type=str, default='20240904') # date.today().strftime("%Y%m%d")
     parser.add_argument('--end-date', type=str, default='20241031') # date.today().strftime("%Y%m%d")
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
-    parser.add_argument('--treatment-output', type=str, default='./treatment_fullMonth_pred_Sep_Oct.csv') #pred.csv; ED_full_data.csv
-    parser.add_argument('--clinic-output', type=str, default='./clinic_fullMonth_pred_Sep_Oct.csv') #pred.csv; ED_full_data.csv
-    parser.add_argument('--root-dir', type=str, default='C:/UHN CDI UoT/Github/model-deployer') # "C:/Users/Muammar/Desktop/MIRA_Test"
+    parser.add_argument('--treatment-output', type=str, default='./treatment_output.csv')
+    parser.add_argument('--clinic-output', type=str, default='./clinic_output.csv')
+    parser.add_argument('--root-dir', type=str, default='.')
     args = parser.parse_args()
     return args
 
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
     
-    thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold_Updated.xlsx')
+    thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold.xlsx')
     
     # treatment anchored files named as eg. AIM2REDUCE_hematology_20241104
     # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_20241104
