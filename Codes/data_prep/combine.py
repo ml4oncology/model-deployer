@@ -84,40 +84,23 @@ def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFram
     return df
 
 
-def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored):
+def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
     """Combine the features into one unified dataset
     """
     with open(code_dir+'/data_prep/config.yaml') as file:
         cfg = yaml.safe_load(file)
-        
-    align_on = cfg['align_on'] 
-    main_date_col = cfg['main_date_col'] 
-    
-    if anchored == '':
-       align_on = align_on[0]
-       main_date_col = main_date_col[0]
-    else:
-       align_on = align_on[1]
-       main_date_col = main_date_col[1]
 
-    if align_on == 'treatment-dates':
+    if anchor == 'treatment':
         df = trt
-    elif align_on == 'clinic_date':
+        main_date_col = 'treatment_date'
+    elif anchor == 'clinic':
         df = pd.DataFrame({'mrn': trt['mrn'].unique(), 'clinic_date': data_pull_date})
         df['clinic_date'] = pd.to_datetime(df['clinic_date']).dt.date
-    elif align_on == 'weekly-mondays':
-        #TODO: make mrn and start and end date selection robust (i.e. make them into command line arguments)
-        mrns = trt['mrn'].unique()
-        dates = pd.date_range(start='2018-01-01', end='2018-12-31', freq='W-MON')
-        df = pd.DataFrame(product(mrns, dates), columns=['mrn', main_date_col])
-    elif align_on.endswith('.parquet.gzip') or align_on.endswith('.parquet'):
-        df = pd.read_parquet(align_on)
-    elif align_on.endswith('.csv'):
-        df = pd.read_csv(align_on)
+        main_date_col = 'clinic_date'
     else:
-        raise ValueError(f'Sorry, aligning features on {align_on} is not supported yet')
+        raise ValueError(f'Sorry, aligning features on {anchor} is not supported yet')
 
-    if align_on != 'treatment-dates':
+    if anchor != 'treatment':
         df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
             
     # Convert to date format
@@ -129,7 +112,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchored
     df['first_treatment_date'] = df['first_treatment_date'].dt.strftime('%Y-%m-%d')
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
     
-    if anchored != '':
+    if anchor != 'treatment':
         df['treatment_date'] = pd.to_datetime(df['treatment_date'])
     
     sym['survey_date'] = pd.to_datetime(sym['survey_date'])

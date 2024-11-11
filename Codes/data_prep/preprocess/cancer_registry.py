@@ -6,13 +6,9 @@ import pandas as pd
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
 
-def get_demographic_data(diagnosis_data_file, info_data_dir, anchored):
-    
-    # anchored = '': treatment anchored files
-    # anchored = 'weekly_': clinic anchored files
-    
+def get_demographic_data(diagnosis_data_file, info_data_dir, anchor):
     df = pd.read_csv(diagnosis_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = filter_demographic_data(df)
     df = process_demographic_data(df, info_data_dir)

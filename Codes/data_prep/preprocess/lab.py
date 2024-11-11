@@ -9,18 +9,14 @@ from data_prep.constants import DROP_CLINIC_COLUMNS
 
 from make_clinical_dataset.constants import OBS_MAP
 
-def get_lab_data(hema_data_file, biochem_data_file, anchored):
-
-    # anchored = '': treatment anchored files
-    # anchored = 'weekly_': clinic anchored files
-    
+def get_lab_data(hema_data_file, biochem_data_file, anchor):
     hema = pd.read_csv(hema_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         hema = hema.drop(columns=DROP_CLINIC_COLUMNS)
     hema = filter_lab_data(hema, obs_name_map=OBS_MAP['Hematology'])
 
     biochem = pd.read_csv(biochem_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         biochem = biochem.drop(columns=DROP_CLINIC_COLUMNS)
     biochem = filter_lab_data(biochem, obs_name_map=OBS_MAP['Biochemistry'])
 

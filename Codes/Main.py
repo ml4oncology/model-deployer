@@ -39,7 +39,7 @@ if __name__ == "__main__":
     data_dir = f'{ROOT_DIR}/Data' #Data
     info_dir= f'{ROOT_DIR}/Infos'
     train_param_dir = f'{ROOT_DIR}/Infos/Train_Data_parameters'
-    code_dir = f'{ROOT_DIR}/Archive/Codes' # TODO: load config.yaml here (the only time code_dir is used)
+    code_dir = f'{ROOT_DIR}/Codes' # TODO: load config.yaml here (the only time code_dir is used)
     model_dir = f'{ROOT_DIR}/Models' 
     fig_dir = f'{ROOT_DIR}/Archive/Figures'
     
@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 ######################### Data Processing ################################
                 ##******************** ED **********************##
                 # Process and prepare data
-                prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED', data_pull_date, postfix)
+                prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED_visit', data_pull_date, anchor)
                 prepared_data_ED['regimen_GI_IRINO Q3W'] = False
                 prepared_data_ED['regimen_GI_PACLITAXEL'] = False
     
