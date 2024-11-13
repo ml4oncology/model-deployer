@@ -20,7 +20,7 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir, data_pull_day, anchor)
     
     #Get changes between treatment sessions
-    df =  get_change_since_prev_session(df)
+    df = get_change_since_prev_session(df)
     
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py

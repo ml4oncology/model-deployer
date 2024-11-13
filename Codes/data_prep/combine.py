@@ -102,7 +102,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
 
     if anchor != 'treatment':
         df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
-            
+
     # Convert to date format
     df[main_date_col] = pd.to_datetime(df[main_date_col])
     df[main_date_col] = df[main_date_col].dt.strftime('%Y-%m-%d')
@@ -139,10 +139,10 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
     df = add_engineered_features(df, date_col=main_date_col)
     
     # Add missing feature
-    df['hematocrit']=np.nan
-    # df['red_cell_distribution_width']=np.nan
+    df['hematocrit'] = np.nan
+    # df['red_cell_distribution_width'] =n p.nan
     
-    #Drop columns
+    # Drop columns
     drop_cols = [
         'esas_constipation', 
         'esas_diarrhea', 

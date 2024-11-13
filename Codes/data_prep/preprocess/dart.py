@@ -25,7 +25,6 @@ def process_symptoms_data(df):
     # some patient_ecog entries have the following format: score-description
     # remove the descriptions and convert the scores to int
     df['patient_ecog'] = df['patient_ecog'].astype(str).str.split('-').str[0]
-    
     df['patient_ecog'] = df['patient_ecog'].astype(float)
     
     # order by survey date

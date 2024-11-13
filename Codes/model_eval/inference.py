@@ -52,7 +52,8 @@ def get_ED_visit_model_output(df, thresholds, model_dir, fig_dir, anchor):
     
     if anchor == "clinic":
         ############### SHAP ##################
-        shap_values = calc_plot_mean_shap_values(X, model, result, fig_dir)
+        # shap_values = calc_plot_mean_shap_values(X, model, result, fig_dir)
+        pass
         
     return result
 
