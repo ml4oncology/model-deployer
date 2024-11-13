@@ -11,7 +11,7 @@ from data_prep.constants import DROP_CLINIC_COLUMNS
 def get_treatment_data(
     chemo_data_file,
     EPR_regimens: pd.DataFrame,
-    EPR_to_EPIC_regimen_map: pd.DataFrame,
+    EPR_to_EPIC_regimen_map: dict,
     data_pull_day: Optional[str] = None, 
     anchor: str = 'treatment'    
 ) -> pd.DataFrame:
@@ -20,8 +20,6 @@ def get_treatment_data(
         EPR_regimens: selected EPR regimens during model training
         EPR_EPIC_regimen_map: map between the old EPR regimens and the new EPIC regimens
     """
-    EPR_to_EPIC_regimen_map = dict(EPR_to_EPIC_regimen_map[['PROTOCOL_DISPLAY_NAME','Mapped_Name_All']].to_numpy())
-    
     df = pd.read_csv(chemo_data_file)
     if anchor == 'clinic':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
@@ -68,14 +66,11 @@ def process_treatment_data(df: pd.DataFrame, data_pull_day: str, anchor: str):
     return df
 
 
-def filter_treatment_data(df, regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict, data_pull_day: str) -> pd.DataFrame:
-    # clean column names
-    regimens.columns = regimens.columns.str.lower()
-    
+def filter_treatment_data(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict, data_pull_day: str) -> pd.DataFrame:
     # clean intent feature
     df['intent'] = df['intent'].replace('U', np.nan)
     
-    df = filter_regimens(df, regimens, EPR_to_EPIC_regimen_map)
+    df = filter_regimens(df, EPR_regimens, EPR_to_EPIC_regimen_map)
 
     # remove one-off duplicate rows (all values are same except for one, most likely due to human error)
     for col in ['first_treatment_date', 'cycle_number']: 
@@ -86,7 +81,7 @@ def filter_treatment_data(df, regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: d
     return df
 
 
-def filter_regimens(df, regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict) -> pd.DataFrame:
+def filter_regimens(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict) -> pd.DataFrame:
     # filter out rows with missing regimen info
     mask = df['regimen'].notnull()
     df = df[mask].copy()
@@ -96,7 +91,7 @@ def filter_regimens(df, regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict) -
     df['regimen'] = df['regimen'].replace(EPR_to_EPIC_regimen_map)
 
     # rename some of the regimens
-    regimen_map = dict(regimens.query('rename.notnull()')[['regimen', 'rename']].to_numpy())
+    regimen_map = dict(EPR_regimens.query('rename.notnull()')[['regimen', 'rename']].to_numpy())
     df['regimen'] = df['regimen'].replace(regimen_map)
     return df
 

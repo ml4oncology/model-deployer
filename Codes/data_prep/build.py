@@ -21,8 +21,10 @@ def build_features(data_dir, info_dir, proj_name, data_pull_day, anchor):
     ed_file = f"{data_dir}/{proj_name}_ED_visits_{postfix}{data_pull_day}.csv"
     diagnosis_file = f"{data_dir}/{proj_name}_diagnosis_{postfix}{data_pull_day}.csv"
     
-    A2R_EPIC_GI_regimen_map = pd.read_excel(f'{info_dir}/A2R_EPIC_GI_regimen_map.xlsx')
-    included_regimens = pd.read_csv(f'{info_dir}/opis_regimen_list.csv')
+    EPR_to_EPIC_regimen_map = pd.read_excel(f'{info_dir}/A2R_EPIC_GI_regimen_map.xlsx')
+    EPR_to_EPIC_regimen_map = dict(EPR_to_EPIC_regimen_map[['PROTOCOL_DISPLAY_NAME','Mapped_Name_All']].to_numpy())
+    EPR_regimens = pd.read_csv(f'{info_dir}/opis_regimen_list.csv')
+    EPR_regimens.columns = EPR_regimens.columns.str.lower()
 
     # symptoms
     dart = get_symptoms_data(esas_file, anchor)
@@ -31,7 +33,7 @@ def build_features(data_dir, info_dir, proj_name, data_pull_day, anchor):
     canc_reg = get_demographic_data(diagnosis_file, info_dir, anchor)
 
     # treatment
-    opis = get_treatment_data(chemo_file, included_regimens, A2R_EPIC_GI_regimen_map, data_pull_day, anchor)
+    opis = get_treatment_data(chemo_file, EPR_regimens, EPR_to_EPIC_regimen_map, data_pull_day, anchor)
 
     # laboratory tests
     lab = get_lab_data(hema_file, biochem_file, anchor)
