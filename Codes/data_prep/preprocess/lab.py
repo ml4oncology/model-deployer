@@ -56,6 +56,7 @@ def process_lab_data(df):
         "Insufficient quantity for testing. Please re-order test and send new sample.",
         "Unable to perform: Lost in transit.",
         ">10.0", # TODO: replace with some other numerical entry?
+        "Unable to obtain result due to the interference of severe hemolysis.",
     ])
     df[mask] = None
 

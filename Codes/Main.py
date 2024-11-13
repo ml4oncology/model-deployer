@@ -41,7 +41,7 @@ if __name__ == "__main__":
     train_param_dir = f'{ROOT_DIR}/Infos/Train_Data_parameters'
     code_dir = f'{ROOT_DIR}/Codes' # TODO: load config.yaml here (the only time code_dir is used)
     model_dir = f'{ROOT_DIR}/Models' 
-    fig_dir = f'{ROOT_DIR}/Archive/Figures'
+    fig_dir = f'{ROOT_DIR}/Figures'
     
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
     
@@ -68,6 +68,8 @@ if __name__ == "__main__":
                 prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED_visit', data_pull_date, anchor)
                 prepared_data_ED['regimen_GI_IRINO Q3W'] = False
                 prepared_data_ED['regimen_GI_PACLITAXEL'] = False
+                prepared_data_ED['regimen_GI_CISPFU _ TRAS_MAIN_'] = False
+                prepared_data_ED['regimen_GI_GEMCAP'] = False
     
                 ######################### Model Evaluation ################################        
                 ##******************** ED **********************##
