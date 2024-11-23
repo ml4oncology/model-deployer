@@ -102,15 +102,9 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
     if anchor != 'treatment':
         df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
 
-    # Convert to date format    
-    df['first_treatment_date'] = df['first_treatment_date'].dt.date()
-    # df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
-    # df['first_treatment_date'] = df['first_treatment_date'].dt.strftime('%Y-%m-%d')
-    # df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
-    
-    sym['survey_date'] = pd.to_datetime(sym['survey_date'])
-    sym['survey_date'] = sym['survey_date'].dt.strftime('%Y-%m-%d')
-    sym['survey_date'] = pd.to_datetime(sym['survey_date'])
+    # Convert to date format
+    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'].dt.strftime('%Y-%m-%d'))
+    sym['survey_date'] = pd.to_datetime(sym['survey_date'].dt.strftime('%Y-%m-%d'))
     
     df = combine_demographic_to_main_data(main=df, demographic=dmg, main_date_col=main_date_col)
     
