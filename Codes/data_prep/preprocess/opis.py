@@ -23,65 +23,69 @@ def get_treatment_data(
     df = pd.read_csv(chemo_data_file)
     if anchor == 'clinic':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
+    df = clean_treatment_data(df, EPR_regimens, EPR_to_EPIC_regimen_map, data_pull_day)
     df = process_treatment_data(df, data_pull_day, anchor)
-    df = filter_treatment_data(df, EPR_regimens, EPR_to_EPIC_regimen_map, data_pull_day)
     return df
-    
 
-def process_treatment_data(df: pd.DataFrame, data_pull_day: str, anchor: str):
-    trt_date = 'trt_date_utc' if data_pull_day is None or anchor == 'clinic' else 'tx_sched_date'
-    
-    # clean column names
+
+def clean_treatment_data(
+    df,
+    EPR_regimens: pd.DataFrame, 
+    EPR_to_EPIC_regimen_map: dict, 
+    data_pull_day: str, 
+):
+    # clean up columns
     df.columns = df.columns.str.lower()
-    
-    # order by id, scheduled date and regimen
-    df = df.sort_values(by=['research_id', trt_date, 'regimen'])
-    
-    # forward fill height, weight and body_surface_area
-    for col in ['height', 'weight', 'body_surface_area']: df[col] = df.groupby('research_id')[col].ffill().bfill()
-    
-    # Keep only treatments scheduled the following day (i.e. one day after data pull)
-    if anchor == 'treatment':
-        df = filter_chemo_trt(df, data_pull_day)
-    elif anchor == 'clinic':
-        df = filter_clinic_treatments(df, data_pull_day)
-    
     col_map = {
         'research_id': 'mrn', 
-        trt_date: 'treatment_date', 
         'first_trt_date_utc': 'first_treatment_date',
         'dose_ord_or_min_dose_ord': 'dose_ordered',
         'dose_given': 'given_dose'
     }
     df = df.rename(columns=col_map) 
+    df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
+    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
 
-    df['first_treatment_date'] = df['first_treatment_date'].apply(str) # due to error in one instance
+    # clean intent feature
+    df['intent'] = df['intent'].replace('U', np.nan)
+
+    df = clean_regimens(df, EPR_regimens, EPR_to_EPIC_regimen_map)
+    return df
+
+
+def process_treatment_data(df, data_pull_day: str, anchor: str) -> pd.DataFrame:
+    trt_date = 'trt_date_utc' if data_pull_day is None or anchor == 'clinic' else 'tx_sched_date'
+
+    # order by mrn, treatment date, and regimen
+    df = df.sort_values(by=['mrn', trt_date, 'regimen'])
+
+    # forward and backward fill height, weight and body_surface_area
+    for col in ['height', 'weight', 'body_surface_area']: 
+        df[col] = df.groupby('mrn')[col].ffill().bfill()
+    
+    # Keep only treatments scheduled the following day (i.e. one day after data pull)
+    if anchor == 'treatment':
+        df = filter_chemo_treatments(df, data_pull_day)
+    elif anchor == 'clinic':
+        df = filter_clinic_treatments(df, data_pull_day)
+    
+    df = df.rename(columns={trt_date: 'treatment_date'}) 
     if anchor == 'treatment':
         df = merge_same_day_treatments(df)
     
     # forward and backward fill first treatment date
-    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
     df['first_treatment_date'] = df.groupby('mrn')['first_treatment_date'].ffill().bfill()
-
-    return df
-
-
-def filter_treatment_data(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict, data_pull_day: str) -> pd.DataFrame:
-    # clean intent feature
-    df['intent'] = df['intent'].replace('U', np.nan)
     
-    df = filter_regimens(df, EPR_regimens, EPR_to_EPIC_regimen_map)
-
     # remove one-off duplicate rows (all values are same except for one, most likely due to human error)
     for col in ['first_treatment_date', 'cycle_number']: 
         cols = df.columns.drop(col)
         mask = ~df.duplicated(subset=cols, keep='first')
         df = df[mask]
-    
+
     return df
 
 
-def filter_regimens(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict) -> pd.DataFrame:
+def clean_regimens(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict) -> pd.DataFrame:
     # filter out rows with missing regimen info
     mask = df['regimen'].notnull()
     df = df[mask].copy()
@@ -96,37 +100,26 @@ def filter_regimens(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dic
     return df
 
 
-def filter_chemo_trt(df, data_pull_day: str):
+def filter_chemo_treatments(df, data_pull_day: str):
     if data_pull_day is None:
         # keep rows with 'Completed' day_status
         mask = df['day_status'] == 'Completed'
         df = df[mask]
     else:     
         # keep treatments scheduled for the next day
-        df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
-        
-        # treatment scheduled one day after data pull
-        following_treatment_date = pd.to_datetime(data_pull_day).date() + timedelta(days=1) 
-        mask = df['tx_sched_date'] == following_treatment_date
+        mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day).date() + timedelta(days=1) 
         df = df[mask]
     
     return df
 
 
 def filter_clinic_treatments(df, data_pull_day: str):
-    df = df.set_index(['research_id','trt_date_utc']).sort_index()
-    df = df.reset_index()
-    
-    # Forward fill treatment dates (showing as 'nan') that are scheduled but not completed
-    df['trt_date_utc'] = df.groupby('research_id')['trt_date_utc'].ffill()
-    df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
+    # forward fill treatment dates (showing as 'nan') that are scheduled but not completed
+    df['trt_date_utc'] = df.groupby('mrn')['trt_date_utc'].ffill()
     
     # filter out rows where next scheduled treatment session does not occur within 5 days of clinic visit
     clinic_date = pd.to_datetime(data_pull_day).date()
-    fiveday_treatment_date = clinic_date + timedelta(days=5) 
-    mask = df["tx_sched_date"].between(
-        clinic_date, fiveday_treatment_date
-    )
+    mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
     df = df[mask]
     
     return df
