@@ -62,14 +62,18 @@ def process_treatment_data(df, data_pull_day: str, anchor: str) -> pd.DataFrame:
     # forward and backward fill height, weight and body_surface_area
     for col in ['height', 'weight', 'body_surface_area']: 
         df[col] = df.groupby('mrn')[col].ffill().bfill()
+
+    # forward fill treatment dates (showing as 'nan') that are scheduled but not completed
+    df['trt_date_utc'] = df.groupby('mrn')['trt_date_utc'].ffill()
     
     # Keep only treatments scheduled the following day (i.e. one day after data pull)
+    df['treatment_date'] = df[trt_date]
     if anchor == 'treatment':
         df = filter_chemo_treatments(df, data_pull_day)
     elif anchor == 'clinic':
         df = filter_clinic_treatments(df, data_pull_day)
-    
-    df = df.rename(columns={trt_date: 'treatment_date'}) 
+
+    df['treatment_date'] = df[trt_date]
     if anchor == 'treatment':
         df = merge_same_day_treatments(df)
     
@@ -109,18 +113,26 @@ def filter_chemo_treatments(df, data_pull_day: str):
         # keep treatments scheduled for the next day
         mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day).date() + timedelta(days=1) 
         df = df[mask]
+
+        # filter out patients in which no treatment is scheduled for the next day
+        # mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day).date() + timedelta(days=1) 
+        # keep_mrns = df.loc[mask, 'mrn'].unique()
+        # df = df[df['mrn'].isin(keep_mrns)]
     
     return df
 
 
 def filter_clinic_treatments(df, data_pull_day: str):
-    # forward fill treatment dates (showing as 'nan') that are scheduled but not completed
-    df['trt_date_utc'] = df.groupby('mrn')['trt_date_utc'].ffill()
-    
     # filter out rows where next scheduled treatment session does not occur within 5 days of clinic visit
     clinic_date = pd.to_datetime(data_pull_day).date()
     mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
     df = df[mask]
+
+    # filter out patients in which no treatment is scheduled within 5 days of clinic date
+    # clinic_date = pd.to_datetime(data_pull_day).date()
+    # mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
+    # keep_mrns = df.loc[mask, 'mrn'].unique()
+    # df = df[df['mrn'].isin(keep_mrns)]
     
     return df
 
