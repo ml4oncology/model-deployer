@@ -6,7 +6,9 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from datetime import timedelta 
+
 from data_prep.constants import DROP_CLINIC_COLUMNS
+from make_clinical_dataset.preprocess.opis import merge_same_day_treatments
 
 def get_treatment_data(
     chemo_data_file,
@@ -134,40 +136,4 @@ def filter_clinic_treatments(df, data_pull_day: str):
     # keep_mrns = df.loc[mask, 'mrn'].unique()
     # df = df[df['mrn'].isin(keep_mrns)]
     
-    return df
-
-###############################################################################
-# Mergers
-###############################################################################
-def merge_same_day_treatments(df):
-    """
-    Collapse multiples rows with the same treatment day into one
-
-    Essential for aggregating the different drugs administered on the same day
-    """
-    format_regimens = lambda regs: ' && '.join(sorted(set(regs)))
-    df = (
-        df
-        .groupby(['mrn', 'treatment_date'])
-        .agg({
-            # handle conflicting data by 
-            # 1. join them togehter
-            'regimen': format_regimens,
-            # 2. take the mean 
-            'height': 'mean',
-            'weight': 'mean',
-            'body_surface_area': 'mean',
-            # 3. output True if any are True
-            
-            # if two treatments (the old regimen and new regimen) overlap on same day, use data associated with the 
-            # most recent regimen 
-            # NOTE: examples found thru df.groupby(['mrn', 'treatment_date'])['first_treatment_date'].nunique() > 1
-            'cycle_number': 'min',
-            'first_treatment_date': 'max',
-            
-            # TODO: come up with robust way to handle the following conflicts
-            'intent': 'first'
-        })
-    )
-    df = df.reset_index()
     return df
