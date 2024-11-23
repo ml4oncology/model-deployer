@@ -45,7 +45,8 @@ def clean_treatment_data(
         'dose_given': 'given_dose'
     }
     df = df.rename(columns=col_map) 
-    df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date']).dt.date
+    df['tx_sched_date'] = pd.to_datetime(df['tx_sched_date'])
+    df['trt_date_utc'] = pd.to_datetime(df['trt_date_utc'])
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
 
     # clean intent feature
@@ -69,7 +70,6 @@ def process_treatment_data(df, data_pull_day: str, anchor: str) -> pd.DataFrame:
     df['trt_date_utc'] = df.groupby('mrn')['trt_date_utc'].ffill()
     
     # Keep only treatments scheduled the following day (i.e. one day after data pull)
-    df['treatment_date'] = df[trt_date]
     if anchor == 'treatment':
         df = filter_chemo_treatments(df, data_pull_day)
     elif anchor == 'clinic':
@@ -113,11 +113,11 @@ def filter_chemo_treatments(df, data_pull_day: str):
         df = df[mask]
     else:     
         # keep treatments scheduled for the next day
-        mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day).date() + timedelta(days=1) 
+        mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
         df = df[mask]
 
         # filter out patients in which no treatment is scheduled for the next day
-        # mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day).date() + timedelta(days=1) 
+        # mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
         # keep_mrns = df.loc[mask, 'mrn'].unique()
         # df = df[df['mrn'].isin(keep_mrns)]
     
@@ -126,12 +126,12 @@ def filter_chemo_treatments(df, data_pull_day: str):
 
 def filter_clinic_treatments(df, data_pull_day: str):
     # filter out rows where next scheduled treatment session does not occur within 5 days of clinic visit
-    clinic_date = pd.to_datetime(data_pull_day).date()
+    clinic_date = pd.to_datetime(data_pull_day)
     mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
     df = df[mask]
 
     # filter out patients in which no treatment is scheduled within 5 days of clinic date
-    # clinic_date = pd.to_datetime(data_pull_day).date()
+    # clinic_date = pd.to_datetime(data_pull_day)
     # mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
     # keep_mrns = df.loc[mask, 'mrn'].unique()
     # df = df[df['mrn'].isin(keep_mrns)]

@@ -66,7 +66,6 @@ def combine_treatment_to_main_data(
     # treatment_drugs = treatment[drug_cols + ['mrn', 'treatment_date']] # treatment drug dosage features
     treatment_feats = treatment.drop(columns=drug_cols) # other treatment features
     treatment_feats['trt_date'] = treatment_feats['treatment_date'] # include treatment date as a feature
-    treatment_feats['treatment_date'] = pd.to_datetime(treatment_feats['treatment_date']).dt.date
     df = combine_feat_to_main_data(main, treatment_feats, main_date_col, 'treatment_date', parallelize=False, **kwargs)
     # df = combine_feat_to_main_data(df, treatment_drugs, main_date_col, 'treatment_date', keep='sum', parallelize=False, **kwargs)
     df = df.rename(columns={'trt_date': 'treatment_date'})
@@ -95,7 +94,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
         main_date_col = 'treatment_date'
     elif anchor == 'clinic':
         df = pd.DataFrame({'mrn': trt['mrn'].unique(), 'clinic_date': data_pull_date})
-        df['clinic_date'] = pd.to_datetime(df['clinic_date']).dt.date
+        df['clinic_date'] = pd.to_datetime(df['clinic_date'])
         main_date_col = 'clinic_date'
     else:
         raise ValueError(f'Sorry, aligning features on {anchor} is not supported yet')
@@ -103,17 +102,10 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
     if anchor != 'treatment':
         df = combine_treatment_to_main_data(main=df, treatment=trt, main_date_col=main_date_col, time_window=[-28, -1])
 
-    # Convert to date format
-    df[main_date_col] = pd.to_datetime(df[main_date_col])
-    df[main_date_col] = df[main_date_col].dt.strftime('%Y-%m-%d')
-    df[main_date_col] = pd.to_datetime(df[main_date_col])
-    
+    # Convert to date format    
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
     df['first_treatment_date'] = df['first_treatment_date'].dt.strftime('%Y-%m-%d')
     df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'])
-    
-    if anchor != 'treatment':
-        df['treatment_date'] = pd.to_datetime(df['treatment_date'])
     
     sym['survey_date'] = pd.to_datetime(sym['survey_date'])
     sym['survey_date'] = sym['survey_date'].dt.strftime('%Y-%m-%d')
