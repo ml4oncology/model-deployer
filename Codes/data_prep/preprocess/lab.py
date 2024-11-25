@@ -7,22 +7,18 @@ import pandas as pd
 import re
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
-from data_prep.constants import obs_map
+from make_clinical_dataset.constants import OBS_MAP
 
-def get_lab_data(hema_data_file, biochem_data_file, anchored):
-
-    # anchored = '': treatment anchored files
-    # anchored = 'weekly_': clinic anchored files
-    
+def get_lab_data(hema_data_file, biochem_data_file, anchor):
     hema = pd.read_csv(hema_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         hema = hema.drop(columns=DROP_CLINIC_COLUMNS)
-    hema = filter_lab_data(hema, obs_name_map=obs_map['Hematology'])
+    hema = filter_lab_data(hema, obs_name_map=OBS_MAP['Hematology'])
 
     biochem = pd.read_csv(biochem_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         biochem = biochem.drop(columns=DROP_CLINIC_COLUMNS)
-    biochem = filter_lab_data(biochem, obs_name_map=obs_map['Biochemistry'])
+    biochem = filter_lab_data(biochem, obs_name_map=OBS_MAP['Biochemistry'])
 
     lab = pd.concat([hema, biochem])
     lab = process_lab_data(lab)
@@ -48,13 +44,28 @@ def process_lab_data(df):
     df = df.groupby(['patientId', 'obs_date', 'obs_name']).agg({'obs_value': 'last'}).reset_index()
 
     # make each observation name into a new column
-    df = df.pivot(index=['patientId', 'obs_date'], columns='obs_name', values='obs_value').reset_index()
-    
-    # Apply the function to replace any '<' entries with half e.g. "<5" with 2.5
+    df = df.pivot(index=['patientId', 'obs_date'], columns='obs_name', values='obs_value')
+
+    # apply the function to replace any '<' entries with half e.g. "<5" with 2.5
     for col in df.columns: df[col] = df[col].apply(replace_less_than)
 
+    # replace non-numerical entries
+    mask = df.isin([
+        ".", 
+        "Platelet clumping present, unable to provide count.", 
+        "Insufficient quantity for testing. Please re-order test and send new sample.",
+        "Unable to perform: Lost in transit.",
+        ">10.0", # TODO: replace with some other numerical entry?
+        "Unable to obtain result due to the interference of severe hemolysis.",
+    ])
+    df[mask] = None
+
+    # convert to numeric data type
+    # df = df.apply(pd.to_numeric, errors='coerce') 
+    df = df.astype(float) # use this one instead to see what sort of non-numerical entries are present
+
     df.columns.name = None
-    return df
+    return df.reset_index()
 
 def filter_lab_data(df, obs_name_map: Optional[dict] = None):
     df = clean_lab_data(df)

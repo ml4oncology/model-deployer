@@ -5,24 +5,27 @@ import pickle
 
 import pandas as pd
 
+from ml_common.engineer import get_change_since_prev_session
+
 from data_prep.build import build_features
 from data_prep.combine import combine_features
-from data_prep.engineer import get_change_since_prev_session, get_missingness_features
 from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData, prep_symp_data
 
 
-def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, model_name, data_pull_day, anchored):
+def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, model_name, data_pull_day, anchor):
     # Build Features
-    dart, canc_reg, opis, lab, er_visit = build_features(data_dir, info_dir, proj_name, data_pull_day, anchored)
+    dart, canc_reg, opis, lab, er_visit = build_features(data_dir, info_dir, proj_name, data_pull_day, anchor)
     
     # Combine Features
-    df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir, data_pull_day, anchored)
+    df = combine_features(lab, opis, canc_reg, dart, er_visit, code_dir, data_pull_day, anchor)
     
     #Get changes between treatment sessions
-    df =  get_change_since_prev_session(df)
+    df = get_change_since_prev_session(df)
     
-    #Get missingness features
-    df = get_missingness_features(df, anchored)
+    # Get missingness features
+    # NOTE: we filter out unused features later on in inference.py
+    # so easier to just calculate missingness for all columns
+    df[df.columns + "_is_missing"] = df.isnull()
     
     # Encode Regimens and Intent
     regimens = pd.read_excel(f'{info_dir}/GI_regimen_feature_list.xlsx')
@@ -33,10 +36,10 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     if model_name == 'symp':
         df = prep_symp_data(df)
     
-    if not anchored=='weekly_':
-        prep = pickle.load(open(f'{train_param_dir}/prep_{model_name}_trt_anchored-2024-10-15.pkl', 'rb'))
-    else:
-        prep = pickle.load(open(f'{train_param_dir}/prep_{model_name}_clinic_anchored-2024-10-15.pkl', 'rb'))
+    if anchor == 'treatment':
+        prep = pickle.load(open(f'{train_param_dir}/prep_{model_name}_trt_anchored.pkl', 'rb'))
+    elif anchor == 'clinic':
+        prep = pickle.load(open(f'{train_param_dir}/prep_{model_name}_clinic_anchored.pkl', 'rb'))
         
     # Transofrm Data: Impute, Normalize and Clip
     clip_threshold = prep.clip_thresh
