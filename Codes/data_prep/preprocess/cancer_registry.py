@@ -6,33 +6,28 @@ import pandas as pd
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
 
-def get_demographic_data(diagnosis_data_file, info_data_dir, anchored):
-    
-    # anchored = '': treatment anchored files
-    # anchored = 'weekly_': clinic anchored files
-    
+def get_demographic_data(diagnosis_data_file, info_data_dir, anchor):
     df = pd.read_csv(diagnosis_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = filter_demographic_data(df)
     df = process_demographic_data(df, info_data_dir)
     return df
 
 def process_demographic_data(df, info_data_dir):
-    
-    All_Cancer_Site_List = pd.read_excel(info_data_dir + '/Cancer_Site_List.xlsx')
-    All_Cancer_Site_List = list(All_Cancer_Site_List['Cancer_Site'])
+    all_cancer_site_list = pd.read_excel(info_data_dir + '/Cancer_Site_List.xlsx')
+    all_cancer_site_list = list(all_cancer_site_list['Cancer_Site'])
     
     cancer = df['primary_site'].str.get_dummies(', ')
     cancer = cancer.add_prefix('cancer_site_')
     
     # assign cancer sites not seen during model training as cancer_site_other
-    other_sites =  [site for site in cancer.columns if site not in All_Cancer_Site_List]
+    other_sites =  [site for site in cancer.columns if site not in all_cancer_site_list]
     cancer['cancer_site_other'] = cancer[other_sites].any(axis=1)
     cancer.drop(columns=other_sites)
     
     # create missing cancer sites required by the model
-    missing_sites = [site for site in All_Cancer_Site_List if site not in cancer.columns]
+    missing_sites = [site for site in all_cancer_site_list if site not in cancer.columns]
     cancer[missing_sites] = False
     
     df = df.join(cancer)
@@ -68,18 +63,15 @@ def filter_demographic_data(df):
     df['mrn'] = df['mrn'].astype(int)
 
     # sanity check - ensure vital status and death date matches and makes sense
-    # mask = df['vital_status'].map({'Dead': False, 'Alive': True}) == df['date_of_death'].isnull()
     mask = df['vital_status'].map({'Deceased': False, 'Alive': True}) == df['date_of_death'].isnull()
     try:
         assert mask.all()
-        
     except AssertionError:
-        df['vital_status'].loc[~mask]='Deceased'
+        df['vital_status'].loc[~mask] = 'Deceased'
     
 
     # filter out patients whose sex is not Male/Female
     mask = df['sex'].isin(['Male', 'Female'])
-    # get_excluded_numbers(df, mask, context=' in which sex is other than Male/Female')
     df = df[mask].copy()
     df['female'] = df.pop('sex') == 'Female'
 

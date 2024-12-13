@@ -5,13 +5,9 @@ import pandas as pd
 import numpy as np
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
-def get_symptoms_data(esas_data_file, anchored):
-    
-    # anchored = '': treatment anchored files
-    # anchored = 'weekly_': clinic anchored files
-    
+def get_symptoms_data(esas_data_file, anchor):
     df = pd.read_csv(esas_data_file)
-    if anchored == 'weekly_':
+    if anchor == 'clinic':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = df.rename(columns={'RESEARCH_ID': 'MRN'})
     df = filter_symptoms_data(df)
@@ -29,7 +25,6 @@ def process_symptoms_data(df):
     # some patient_ecog entries have the following format: score-description
     # remove the descriptions and convert the scores to int
     df['patient_ecog'] = df['patient_ecog'].astype(str).str.split('-').str[0]
-    
     df['patient_ecog'] = df['patient_ecog'].astype(float)
     
     # order by survey date
