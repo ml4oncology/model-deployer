@@ -4,6 +4,7 @@ Final processing script
 import pickle
 
 import pandas as pd
+from datetime import timedelta 
 
 from ml_common.engineer import get_change_since_prev_session
 
@@ -70,6 +71,11 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     
     # Fill remaining nan's
     df = fill_missing_data(df)
+    
+    if anchor == 'treatment':
+        # keep treatments scheduled for the next day
+        mask = df['treatment_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
+        df = df[mask]
     
     return df
     
