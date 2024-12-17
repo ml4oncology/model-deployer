@@ -57,27 +57,23 @@ def clean_treatment_data(
 
 
 def process_treatment_data(df, data_pull_day: str, anchor: str) -> pd.DataFrame:
-    trt_date = 'trt_date_utc' if data_pull_day is None or anchor == 'clinic' else 'tx_sched_date'
 
-    # order by mrn, treatment date, and regimen
-    df = df.sort_values(by=['mrn', trt_date, 'regimen'])
+    # order by mrn, treatment date, scheduled treatment date and regimen
+    df = df.sort_values(by=['mrn', 'tx_sched_date', 'trt_date_utc', 'regimen'])
 
     # forward and backward fill height, weight and body_surface_area
     for col in ['height', 'weight', 'body_surface_area']: 
         df[col] = df.groupby('mrn')[col].ffill().bfill()
-
-    # forward fill treatment dates (showing as 'nan') that are scheduled but not completed
-    df['trt_date_utc'] = df.groupby('mrn')['trt_date_utc'].ffill()
     
-    # Keep only treatments scheduled the following day (i.e. one day after data pull)
-    if anchor == 'treatment':
-        df = filter_chemo_treatments(df, data_pull_day)
-    elif anchor == 'clinic':
-        df = filter_clinic_treatments(df, data_pull_day)
+    # Get scheduled treatments within 5 days of clinic visit
+    if anchor == 'clinic':
+        scheduled_treatment = get_scheduled_treatments(df, data_pull_day)
+    
+    # Filter treatment sessions before data pull date
+    df = filter_chemo_treatments(df, data_pull_day, anchor)
 
-    df['treatment_date'] = df[trt_date]
-    if anchor == 'treatment':
-        df = merge_same_day_treatments(df)
+    df['treatment_date'] = df['trt_date_utc']
+    df = merge_same_day_treatments(df)
     
     # forward and backward fill first treatment date
     df['first_treatment_date'] = df.groupby('mrn')['first_treatment_date'].ffill().bfill()
@@ -87,6 +83,10 @@ def process_treatment_data(df, data_pull_day: str, anchor: str) -> pd.DataFrame:
         cols = df.columns.drop(col)
         mask = ~df.duplicated(subset=cols, keep='first')
         df = df[mask]
+     
+    # Merge scheduled teratment dates to clinic visit data; for sanity check and reporting    
+    if anchor == 'clinic':
+        df = pd.merge(df, scheduled_treatment, how='left', on='mrn')
 
     return df
 
@@ -106,34 +106,36 @@ def clean_regimens(df, EPR_regimens: pd.DataFrame, EPR_to_EPIC_regimen_map: dict
     return df
 
 
-def filter_chemo_treatments(df, data_pull_day: str):
+def filter_chemo_treatments(df, data_pull_day: str, anchor: str):
+    
     if data_pull_day is None:
         # keep rows with 'Completed' day_status
         mask = df['day_status'] == 'Completed'
         df = df[mask]
-    else:     
-        # keep treatments scheduled for the next day
-        mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
+    else:
+        pull_date = pd.to_datetime(data_pull_day)
+        
+        if anchor == 'treatment':
+            mask = (df["trt_date_utc"] < pull_date) | (df['tx_sched_date'] == pull_date + timedelta(days=1))
+        elif anchor == 'clinic':
+            mask = (df["trt_date_utc"] < pull_date)
+            
         df = df[mask]
-
-        # filter out patients in which no treatment is scheduled for the next day
-        # mask = df['tx_sched_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
-        # keep_mrns = df.loc[mask, 'mrn'].unique()
-        # df = df[df['mrn'].isin(keep_mrns)]
+        
+        # For anchor=='treatment', replace NaN in treatment date with treatment scheduled date
+        df.loc[df['trt_date_utc'].isnull(),'trt_date_utc'] = df['tx_sched_date']
     
     return df
 
 
-def filter_clinic_treatments(df, data_pull_day: str):
-    # filter out rows where next scheduled treatment session does not occur within 5 days of clinic visit
-    clinic_date = pd.to_datetime(data_pull_day)
-    mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
-    df = df[mask]
-
-    # filter out patients in which no treatment is scheduled within 5 days of clinic date
-    # clinic_date = pd.to_datetime(data_pull_day)
-    # mask = df["tx_sched_date"].between(clinic_date, clinic_date + timedelta(days=5))
-    # keep_mrns = df.loc[mask, 'mrn'].unique()
-    # df = df[df['mrn'].isin(keep_mrns)]
+def get_scheduled_treatments(df, data_pull_day: str):
     
-    return df
+    pull_date = pd.to_datetime(data_pull_day)
+    
+    # filter out rows where next scheduled treatment session does not occur within 5 days of pull date (clinic visit)
+    filtered_df = df[df["tx_sched_date"].between(pull_date, pull_date + timedelta(days=5))]
+    filtered_df = filtered_df[['mrn','tx_sched_date']]
+    
+    unique_dates_df = filtered_df.sort_values('tx_sched_date').drop_duplicates(subset='mrn', keep='first')
+    
+    return unique_dates_df
