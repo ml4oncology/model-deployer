@@ -1,0 +1,8 @@
+**/__pycache__
+.DS_store
+*.egg-info
+Infos/
+Models/
+Data/
+Archive/
+Figures/

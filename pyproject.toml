@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deployer"
+description = "Silent deployment of AIM2REDUCE models under EPIC"
+version = "0.1.0"
+authors = [
+    { name = "Muammar Kabir", email = "Muammar.kabir@uhn.ca" },
+    { name = "Kevin He", email = "Kevin.He@uhn.ca" }
+]
+dependencies = [
+    "ml_common @ git+https://github.com/ml4oncology/ml-common.git",
+    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git",
+    "preduce @ git+https://github.com/ml4oncology/preduce.git"
+]
+
+[tool.setuptools]
+package-dir = {"deployer" = "Codes/data_prep"}
