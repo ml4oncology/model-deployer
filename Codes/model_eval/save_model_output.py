@@ -3,9 +3,9 @@ Save and display model performance results
 """
 
 import pandas as pd
-from tabulate import tabulate
+# from tabulate import tabulate
 
-def save_and_display_model_results(model_results, filename="model_performance.csv"):
+def save_and_display_model_results(model_results, output_folder, perf_filename):
     """
     Save and display model performance results.
 
@@ -24,11 +24,9 @@ def save_and_display_model_results(model_results, filename="model_performance.cs
     results_df = pd.DataFrame(model_results)
 
     # Save the DataFrame to a CSV file
-    results_df.to_csv(filename, index=False)
-    print(f"Performance metrics saved to {filename}.")
+    results_df.to_csv(f"{output_folder}/{perf_filename}", index=False)
+    print(f"Performance metrics saved to {perf_filename}.")
 
-    # Display the DataFrame in tabular format
-    print(tabulate(results_df, headers='keys', tablefmt='grid'))
-
-
-    
+    # # Display the DataFrame in tabular format
+    # print(tabulate(results_df, headers='keys', tablefmt='grid'))
+ 
