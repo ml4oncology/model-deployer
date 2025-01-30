@@ -2,7 +2,9 @@
 Main Script 
 """
 import argparse
+import json
 import os
+from pathlib import Path
 
 import pandas as pd
 from tqdm import tqdm
@@ -18,11 +20,12 @@ warnings.filterwarnings("ignore")
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--start-date', type=str, default='20240904') 
-    parser.add_argument('--end-date', type=str, default='20250101') 
+    parser.add_argument('--end-date', type=str, default='20240904')
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
     parser.add_argument('--output-folder', type=str, default='./Outputs')
     parser.add_argument('--model-anchor', type=str, choices=['clinic', 'treatment'], default='clinic')
     parser.add_argument('--root-dir', type=str, default='.')
+    parser.add_argument('--data-dir', type=str, default=r'\\svm_uhn\CDI_Epic\AIM2REDUCE')
     args = parser.parse_args()
     return args
 
@@ -37,13 +40,13 @@ if __name__ == "__main__":
 
     # TODO: maybe we should only make data-dir and model-dir and info-dir into CLI arguments and remove root-dir? 
     #       for better generalizability for end-users
-    data_dir = f'{ROOT_DIR}/Data' #Data
+    data_dir = args.data_dir
     info_dir= f'{ROOT_DIR}/Infos'
     train_param_dir = f'{ROOT_DIR}/Infos/Train_Data_parameters'
     code_dir = f'{ROOT_DIR}/Codes' # TODO: load config.yaml here (the only time code_dir is used)
     model_dir = f'{ROOT_DIR}/Models' 
     fig_dir = f'{ROOT_DIR}/Figures'
-    results_output = f"{anchor}_output.csv" 
+    results_output = f"{anchor}_output.csv"
     
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -76,6 +79,10 @@ if __name__ == "__main__":
             prepared_data_ED['regimen_GI_CISPFU _ TRAS_MAIN_'] = False
             prepared_data_ED['regimen_GI_GEMCAP'] = False
 
+            # store processed data
+            prepared_data_ED.index.rename('idx', True)
+            prepared_data_ED.to_csv(Path(output_folder) / f"input_{data_pull_date}_{anchor}.csv")
+
             ######################### Model Evaluation ################################        
             ##******************** ED **********************##
             # Load pre-defined prediction thresholds
@@ -86,6 +93,11 @@ if __name__ == "__main__":
             results[anchor].append(ED_treatment_result)
         else:
             print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
+            print(json.dumps({"success": False, "message": f'no data for {data_pull_date}'}))
+            exit()
     
     results[anchor] = pd.concat(results[anchor], ignore_index=True, axis=0)
-    results[anchor].to_csv(f"{output_folder}/{results_output}")
+    results[anchor].index.rename('idx', True)
+    results[anchor].to_csv(Path(output_folder) / f"output_{start_date}_{anchor}.csv")
+
+    print(json.dumps({"success": True}))

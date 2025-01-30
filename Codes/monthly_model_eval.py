@@ -5,6 +5,7 @@ for Model Inference
 """
 
 import argparse
+import json
 import os
 
 import pandas as pd
@@ -27,7 +28,10 @@ def parse_args():
     parser.add_argument('--output-folder', type=str, default='./Outputs')
     parser.add_argument('--model-anchor', type=str, default='clinic') # treatment clinic 
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
-    parser.add_argument('--root-dir', type=str, default='.') 
+    parser.add_argument('--root-dir', type=str, default='.')
+    parser.add_argument('--data-dir', type=str, default=r'\\svm_uhn\CDI_Epic\AIM2REDUCE')
+    parser.add_argument('--pred-file', type=str, default=r'')
+    parser.add_argument('--perf-file', type=str, default=r'')
     args = parser.parse_args()
     return args
 
@@ -37,21 +41,21 @@ if __name__ == "__main__":
     end_date = args.end_date
     ED_visit_end_date = args.ED_visit_end_date
     monthly_pull_date = args.monthly_pull_date
-    output_folder = args.output_folder
+    # output_folder = args.output_folder
     anchor = args.model_anchor
     proj_name = args.project_name
     ROOT_DIR = args.root_dir
+    pred_file = args.pred_file
+    perf_file = args.perf_file
 
     # TODO: maybe we should only make data-dir and model-dir and info-dir into CLI arguments and remove root-dir? 
     #       for better generalizability for end-users
-    data_dir = f'{ROOT_DIR}/Data' #Data
+    data_dir = args.data_dir
     info_dir= f'{ROOT_DIR}/Infos'
     code_dir = f'{ROOT_DIR}/Codes' # TODO: load config.yaml here (the only time code_dir is used)
-    pred_file = f"{anchor}_output.csv"
-    perf_file = f"{anchor}_model_perf.csv"
     
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    # if not os.path.exists(output_folder):
+    #     os.makedirs(output_folder)
     
     thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold.xlsx')
     postfix_map = {'treatment': 'monthly_', 'clinic': 'weekly_monthly_'}
@@ -68,7 +72,7 @@ if __name__ == "__main__":
     ############################ Analyze data #################################
 
     # Model Prediction file
-    df = pd.read_csv(f'{output_folder}/{pred_file}', parse_dates=[date_col])
+    df = pd.read_csv(pred_file, parse_dates=[date_col])
     df = df[df[date_col].between(start_date, end_date)]
 
     #Merge ED visit dates and true labels to Model prediction file
@@ -116,5 +120,6 @@ if __name__ == "__main__":
     
     ######################  Save Output ###########################
     # Save and display model performance results
-    save_and_display_model_results(model_results, output_folder, perf_file)
-                 
+    save_and_display_model_results(model_results, perf_file)
+
+    print(json.dumps({"success": True}))

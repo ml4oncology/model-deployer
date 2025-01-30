@@ -5,7 +5,7 @@ import pickle
 
 import numpy as np
 
-from model_eval.calc_shap import calc_plot_mean_shap_values
+# from model_eval.calc_shap import calc_plot_mean_shap_values
 
 
 def predict(models, data):
