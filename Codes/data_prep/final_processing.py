@@ -7,10 +7,11 @@ import pandas as pd
 from datetime import timedelta 
 
 from ml_common.engineer import get_change_since_prev_session
+from ml_common.prep import fill_missing_data_heuristically
 
 from data_prep.build import build_features
 from data_prep.combine import combine_features
-from data_prep.prep import encode_regimens, encode_intent, fill_missing_data, PrepData, prep_symp_data
+from data_prep.prep import encode_regimens, encode_intent, PrepData, prep_symp_data
 
 
 def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, model_name, data_pull_day, anchor):
@@ -70,7 +71,7 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
     df = transformer.transform_data(df)
     
     # Fill remaining nan's
-    df = fill_missing_data(df)
+    df = fill_missing_data_heuristically(df)
     
     if anchor == 'treatment':
         # keep treatments scheduled for the next day
@@ -78,5 +79,3 @@ def final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, mode
         df = df[mask]
     
     return df
-    
-
