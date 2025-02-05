@@ -4,6 +4,7 @@ Module to preprocess laboratory test data, which includes hematology and biochem
 from typing import Optional
 
 import pandas as pd
+import numpy as np
 import re
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
@@ -59,7 +60,7 @@ def process_lab_data(df):
         "Unable to obtain result due to the interference of severe hemolysis.",
         "Platelets clumped, unable to count. A Sodium Citrate (light blue) tube is required. Please order CITRATED PLATELET COUNT. The platelet result will be reported for the CITRATED PLATELET COUNT procedure when available.",
     ])
-    df[mask] = None
+    df[mask] = np.nan #None
 
     # convert to numeric data type
     # df = df.apply(pd.to_numeric, errors='coerce') 
