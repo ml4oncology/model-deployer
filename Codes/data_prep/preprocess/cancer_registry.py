@@ -53,6 +53,7 @@ def filter_demographic_data(df):
     # clean column names
     df.columns = df.columns.str.lower()
     df = df.rename(columns= {'research_id': 'mrn'})
+    df['date_of_birth'] = pd.to_datetime(df['date_of_birth'])
 
     # filter out patients without medical record numbers
     mask = df['mrn'].notnull()

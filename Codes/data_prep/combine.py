@@ -8,7 +8,11 @@ import numpy as np
 
 import yaml
 
-from make_clinical_dataset.combine import combine_event_to_main_data, combine_treatment_to_main_data
+from make_clinical_dataset.combine import (
+    combine_demographic_to_main_data,
+    combine_event_to_main_data, 
+    combine_treatment_to_main_data
+)
 from make_clinical_dataset.feat_eng import (
     get_days_since_last_event, 
     get_line_of_therapy, 
@@ -16,33 +20,6 @@ from make_clinical_dataset.feat_eng import (
     get_years_diff, 
 )
 from ml_common.anchor import merge_closest_measurements
-
-
-def combine_demographic_to_main_data(
-    main: pd.DataFrame, 
-    demographic: pd.DataFrame, 
-    main_date_col: str
-) -> pd.DataFrame:
-    """
-    Args:
-        main_date_col: The column name of the main asessment date
-    """
-    df = pd.merge(main, demographic, on='mrn', how='left')
-
-    # exclude patients with missing birth date
-    mask = df['date_of_birth'].notnull()
-    # get_excluded_numbers(df, mask, context=' with missing birth date')
-    df = df[mask]
-    
-    df['date_of_birth'] = pd.to_datetime(df['date_of_birth'])
-
-    # exclude patients under 18 years of age
-    df['age'] = get_years_diff(df, main_date_col, 'date_of_birth')
-    mask = df['age'] >= 18
-    # get_excluded_numbers(df, mask, context=' under 18 years of age')
-    df = df[mask]
-
-    return df
 
 
 def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFrame:
@@ -67,8 +44,7 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
         df['assessment_date'] = df['treatment_date']
     elif anchor == 'clinic':
         df = pd.DataFrame({'mrn': trt['mrn'].unique(), 'clinic_date': data_pull_date})
-        df['clinic_date'] = pd.to_datetime(df['clinic_date'])
-        df['assessment_date'] = df['clinic_date']
+        df['assessment_date'] = pd.to_datetime(df['clinic_date'])
     else:
         raise ValueError(f'Sorry, aligning features on {anchor} is not supported yet')
 
