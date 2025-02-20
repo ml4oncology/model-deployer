@@ -2,12 +2,9 @@
 Module to combine features
 """
 from functools import partial
-from itertools import product
 
-from tqdm import tqdm
 import pandas as pd
 import numpy as np
-from typing import Tuple
 
 import yaml
 
@@ -67,32 +64,27 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
 
     if anchor == 'treatment':
         df = trt
-        main_date_col = 'treatment_date'
+        df['assessment_date'] = df['treatment_date']
     elif anchor == 'clinic':
         df = pd.DataFrame({'mrn': trt['mrn'].unique(), 'clinic_date': data_pull_date})
         df['clinic_date'] = pd.to_datetime(df['clinic_date'])
-        main_date_col = 'clinic_date'
+        df['assessment_date'] = df['clinic_date']
     else:
         raise ValueError(f'Sorry, aligning features on {anchor} is not supported yet')
 
     if anchor != 'treatment':
         df = combine_treatment_to_main_data(
-            df, trt, main_date_col, time_window=cfg['trt_lookback_window'], parallelize=False
+            df, trt, 'assessment_date', time_window=cfg['trt_lookback_window'], parallelize=False
         )
-
-    # Convert to date format
-    df['assessment_date'] = df[main_date_col]
-    df['first_treatment_date'] = pd.to_datetime(df['first_treatment_date'].dt.strftime('%Y-%m-%d'))
-    sym['survey_date'] = pd.to_datetime(sym['survey_date'].dt.strftime('%Y-%m-%d'))
     
-    df = combine_demographic_to_main_data(df, dmg, main_date_col)
+    df = combine_demographic_to_main_data(df, dmg, 'assessment_date')
     df = merge_closest_measurements(df, sym, 'assessment_date', 'survey_date', time_window=cfg['symp_lookback_window'])
     df = merge_closest_measurements(df, lab, 'assessment_date', 'obs_date', time_window=cfg['lab_lookback_window'])
     df = combine_event_to_main_data(
         df, erv, 'assessment_date', 'event_date', event_name='ED_visit', lookback_window=cfg['ed_visit_lookback_window'], 
         parallelize=False
     )
-    df = add_engineered_features(df, main_date_col)
+    df = add_engineered_features(df, 'assessment_date')
     
     # Add missing feature
     df['hematocrit'] = np.nan
@@ -106,9 +98,6 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
         'prothrombin_time_international_normalized_ratio'
     ]
     df = df.drop(columns=drop_cols, errors='ignore')
-
-    # TMP
-    del df['assessment_date']
     
     return df
     
