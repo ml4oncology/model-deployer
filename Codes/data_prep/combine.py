@@ -2,6 +2,7 @@
 Module to combine features
 """
 from functools import partial
+import logging
 
 import pandas as pd
 import numpy as np
@@ -17,9 +18,11 @@ from make_clinical_dataset.feat_eng import (
     get_days_since_last_event, 
     get_line_of_therapy, 
     get_visit_month_feature,
-    get_years_diff, 
 )
+from ml_common.util import logger
 from ml_common.anchor import merge_closest_measurements
+
+logger.setLevel(logging.WARNING)
 
 
 def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFrame:

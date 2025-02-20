@@ -30,21 +30,13 @@ def encode_regimens(df, regimen_data):
     return df
 
 def encode_intent(df):
+    df = pd.get_dummies(df, columns=['intent'])
 
-    intent_list = ['Palliative', 'Neoadjuvant', 'Adjuvant', 'Curative']
-    intent_renamed = ['intent_PALLIATIVE', 'intent_NEOADJUVANT', 'intent_ADJUVANT', 'intent_CURATIVE']
-    # intent_renamed = ['intent_' + s for s in intent_list]
-    
-    df1_set = set(np.ravel(df['intent'].values))
-    df2_set = set(intent_list)
-    missing_intents = list(df2_set - df1_set)
-    
-    df = pd.get_dummies(df, columns=['intent'], prefix='', prefix_sep='') # one-hot encode
-    df[missing_intents] = 0
-        
-    rename_map = dict(zip(intent_list, intent_renamed))
-    df = df.rename(columns=rename_map)
-    
+    # TODO: centralize the creation of all missing columns
+    for intent in ['PALLIATIVE', 'NEOADJUVANT', 'ADJUVANT', 'CURATIVE']:
+        if f'intent_{intent}' not in df.columns:
+            df[f'intent_{intent}'] = 0
+            
     return df
             
 

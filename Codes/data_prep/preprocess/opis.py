@@ -51,6 +51,7 @@ def clean_treatment_data(
 
     # clean intent feature
     df['intent'] = df['intent'].replace('U', np.nan)
+    df['intent'] = df['intent'].str.upper()
 
     df = clean_regimens(df, EPR_regimens, EPR_to_EPIC_regimen_map)
     return df
