@@ -1,5 +1,5 @@
 """
-Module to preprocess OPIS (systemic therapy treatment data) - CHEMO
+Module to preprocess chemotherapy treatment data
 """
 from typing import Optional
 

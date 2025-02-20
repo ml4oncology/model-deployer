@@ -1,7 +1,6 @@
 """
 Module to combine features
 """
-from functools import partial
 import logging
 
 import pandas as pd

@@ -4,11 +4,11 @@ Script to turn raw data into features for modelling
 
 import pandas as pd
 
-from data_prep.preprocess.cancer_registry import get_demographic_data
-from data_prep.preprocess.dart import get_symptoms_data
+from data_prep.preprocess.diagnosis import get_demographic_data
+from data_prep.preprocess.esas import get_symptoms_data
 from data_prep.preprocess.emergency import get_emergency_room_data
 from data_prep.preprocess.lab import get_lab_data
-from data_prep.preprocess.opis import get_treatment_data
+from data_prep.preprocess.chemo import get_treatment_data
 
 
 def build_features(data_dir, info_dir, proj_name, data_pull_day, anchor):

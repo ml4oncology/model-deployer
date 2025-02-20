@@ -1,5 +1,5 @@
 """
-Module to preprocess the cancer registry (cancer patient demographic data) - DIAGNOSIS
+Module to preprocess the demographic and diagnosis data
 """
 
 import pandas as pd

@@ -6,7 +6,7 @@ for specific mrns
 
 import pandas as pd
 # from datetime import timedelta #datetime,
-from data_prep.preprocess.opis import get_treatment_data
+from data_prep.preprocess.chemo import get_treatment_data
 
 
 def get_patients_with_completed_trt(info_dir, chemo_file, start_date, end_date, df, anchor):
