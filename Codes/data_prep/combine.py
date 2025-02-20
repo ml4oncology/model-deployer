@@ -10,30 +10,15 @@ import numpy as np
 import yaml
 
 from make_clinical_dataset.combine import (
+    add_engineered_features, 
     combine_demographic_to_main_data,
     combine_event_to_main_data, 
     combine_treatment_to_main_data
-)
-from make_clinical_dataset.feat_eng import (
-    get_days_since_last_event, 
-    get_line_of_therapy, 
-    get_visit_month_feature,
 )
 from ml_common.util import logger
 from ml_common.anchor import merge_closest_measurements
 
 logger.setLevel(logging.WARNING)
-
-
-def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFrame:
-    df = get_visit_month_feature(df, col=date_col)
-    df['line_of_therapy'] = df.groupby('mrn', group_keys=False).apply(get_line_of_therapy)
-    df['days_since_starting_treatment'] = (df[date_col] - df['first_treatment_date']).dt.days
-    get_days_since_last_treatment = partial(
-        get_days_since_last_event, main_date_col=date_col, event_date_col='treatment_date'
-    )
-    df['days_since_last_treatment'] = df.groupby('mrn', group_keys=False).apply(get_days_since_last_treatment)
-    return df
 
 
 def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
