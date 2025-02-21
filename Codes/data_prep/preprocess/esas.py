@@ -1,5 +1,5 @@
 """
-Module to preprocess DART (symptom data)
+Module to preprocess ESAS symptom data
 """
 import pandas as pd
 import numpy as np

@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('--end-date', type=str, default='20250101') 
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
     parser.add_argument('--output-folder', type=str, default='./Outputs')
-    parser.add_argument('--model-anchor', type=str, default='clinic') # treatment clinic
+    parser.add_argument('--model-anchor', type=str, choices=['clinic', 'treatment'], default='clinic')
     parser.add_argument('--root-dir', type=str, default='.')
     args = parser.parse_args()
     return args
@@ -69,6 +69,8 @@ if __name__ == "__main__":
             ##******************** ED **********************##
             # Process and prepare data
             prepared_data_ED = final_process(data_dir, info_dir, train_param_dir, code_dir, proj_name, 'ED_visit', data_pull_date, anchor)
+            
+            # TODO: move this to regimen one-hot encoding function
             prepared_data_ED['regimen_GI_IRINO Q3W'] = False
             prepared_data_ED['regimen_GI_PACLITAXEL'] = False
             prepared_data_ED['regimen_GI_CISPFU _ TRAS_MAIN_'] = False

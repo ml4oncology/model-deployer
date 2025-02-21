@@ -1,5 +1,5 @@
 """
-Module to preprocess OPIS (systemic therapy treatment data) - CHEMO
+Module to preprocess chemotherapy treatment data
 """
 from typing import Optional
 
@@ -8,6 +8,7 @@ import pandas as pd
 from datetime import timedelta 
 
 from data_prep.constants import DROP_CLINIC_COLUMNS
+from make_clinical_dataset.feat_eng import get_line_of_therapy
 from make_clinical_dataset.preprocess.opis import merge_same_day_treatments
 
 def get_treatment_data(
@@ -51,6 +52,7 @@ def clean_treatment_data(
 
     # clean intent feature
     df['intent'] = df['intent'].replace('U', np.nan)
+    df['intent'] = df['intent'].str.upper()
 
     df = clean_regimens(df, EPR_regimens, EPR_to_EPIC_regimen_map)
     return df
@@ -88,6 +90,9 @@ def process_treatment_data(df, data_pull_day: str, anchor: str) -> pd.DataFrame:
     if anchor == 'clinic' and data_pull_day is not None:
         df = pd.merge(df, scheduled_treatment, how='left', on='mrn')
 
+    # compute line of therapy
+    df['line_of_therapy'] = df.groupby('mrn', group_keys=False).apply(get_line_of_therapy)
+    
     return df
 
 
