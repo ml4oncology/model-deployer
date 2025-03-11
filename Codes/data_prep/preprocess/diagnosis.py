@@ -6,28 +6,26 @@ import pandas as pd
 from data_prep.constants import DROP_CLINIC_COLUMNS
 
 
-def get_demographic_data(diagnosis_data_file, info_data_dir, anchor):
+def get_demographic_data(diagnosis_data_file, cancer_sites, anchor):
     df = pd.read_csv(diagnosis_data_file)
     if anchor == 'clinic':
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
     df = filter_demographic_data(df)
-    df = process_demographic_data(df, info_data_dir)
+    df = process_demographic_data(df, cancer_sites)
     return df
 
-def process_demographic_data(df, info_data_dir):
-    all_cancer_site_list = pd.read_excel(info_data_dir + '/Cancer_Site_List.xlsx')
-    all_cancer_site_list = list(all_cancer_site_list['Cancer_Site'])
-    
+def process_demographic_data(df, cancer_sites):
     cancer = df['primary_site'].str.get_dummies(', ')
     cancer = cancer.add_prefix('cancer_site_')
     
     # assign cancer sites not seen during model training as cancer_site_other
-    other_sites =  [site for site in cancer.columns if site not in all_cancer_site_list]
+    other_sites =  [site for site in cancer.columns if site not in cancer_sites]
     cancer['cancer_site_other'] = cancer[other_sites].any(axis=1)
     cancer.drop(columns=other_sites)
     
     # create missing cancer sites required by the model
-    missing_sites = [site for site in all_cancer_site_list if site not in cancer.columns]
+    # TODO: centralize all creation of missing columns
+    missing_sites = [site for site in cancer_sites if site not in cancer.columns]
     cancer[missing_sites] = False
     
     df = df.join(cancer)

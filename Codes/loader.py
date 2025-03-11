@@ -18,6 +18,9 @@ class Config:
 
         self.gi_regimens = pd.read_excel(f'{info_dir}/GI_regimen_feature_list.xlsx')
 
+        self.cancer_sites = pd.read_excel(f'{info_dir}/Cancer_Site_List.xlsx')
+        self.cancer_site_list = self.cancer_sites['Cancer_Site'].tolist()
+
 
 class Model:
     """Loads ML models and pipeline parameters"""
@@ -31,4 +34,5 @@ class Model:
             self.model = load_pickle(model_dir, 'RF_ED_visit_trt_anchored')
         elif anchor == 'clinic':
             self.prep = load_pickle(prep_dir, 'prep_ED_visit_clinic_anchored')
+            # NOTE: Ensure XGBoost version 2.0.3 is installed (pip install xgboost==2.0.3 --user)
             self.model = load_pickle(model_dir, 'XGB_ED_visit_clinic_anchored')
