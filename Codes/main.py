@@ -1,6 +1,3 @@
-"""
-Main Script 
-"""
 import argparse
 import os
 
@@ -88,4 +85,4 @@ if __name__ == "__main__":
             print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
     
     results[anchor] = pd.concat(results[anchor], ignore_index=True, axis=0)
-    results[anchor].to_csv(f"{output_folder}/{results_output}")
+    results[anchor].to_csv(f"{output_folder}/{results_output}", index=False)
