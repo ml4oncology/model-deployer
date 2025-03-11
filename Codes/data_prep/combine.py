@@ -48,19 +48,9 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
         parallelize=False
     )
     df = add_engineered_features(df, 'assessment_date')
-    
+
     # Add missing feature
     df['hematocrit'] = np.nan
-    # Drop columns
-    drop_cols = [
-        'esas_constipation', 
-        'esas_diarrhea', 
-        'esas_sleep', 
-        'activated_partial_thromboplastin_time',
-        'carbohydrate_antigen_19-9', 
-        'prothrombin_time_international_normalized_ratio'
-    ]
-    df = df.drop(columns=drop_cols, errors='ignore')
     
     return df
     

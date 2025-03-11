@@ -26,6 +26,11 @@ def encode_regimens(df, regimen_data):
         
     rename_map = dict(zip(regimens_features, regimens_renamed))
     df = df.rename(columns=rename_map)
+
+    df['regimen_GI_IRINO Q3W'] = False
+    df['regimen_GI_PACLITAXEL'] = False
+    df['regimen_GI_CISPFU _ TRAS_MAIN_'] = False
+    df['regimen_GI_GEMCAP'] = False
     
     return df
 
@@ -70,9 +75,7 @@ class PrepData(PrepData):
 
         if impute:
             # Impute missing data based on the train data mode/median/mean
-            allNaN_col = data.columns[data.isna().all()].tolist()
-            for iC in range(len(allNaN_col)):
-                data[allNaN_col[iC]][0] = 0
+            data.loc[0, data.columns[data.isna().all()]] = 0
             data = self.imp.impute(data)
             
         if normalize:
