@@ -10,22 +10,13 @@ from ml_common.prep import PrepData
 
 
 def encode_regimens(df, regimen_data):
-    
-    regimens_features = list(regimen_data['Regimen'])
-    regimens_renamed = list(regimen_data['Regimen_Rename'])
-    
-    mask = ~df['regimen'].isin(regimens_features) # Get locations of new regimens not in original regimen list
-    df.loc[mask, 'regimen'] = 'regimen_other' # if regimen not in the list, set it to regimen_other
-    
-    df1_set = set(np.ravel(df['regimen'].values))
-    df2_set = set(regimens_features)
-    missing_regimens = list(df2_set - df1_set)
-    
-    df = pd.get_dummies(df, columns=['regimen'], prefix='', prefix_sep='') # one-hot encode
+    regimen_map = dict(regimen_data[['Regimen', 'Regimen_Rename']].to_numpy())
+    df['regimen'] = df['regimen'].map(regimen_map).fillna('regimen_other')
+
+    missing_regimens = list(set(regimen_map.values()) - set(df['regimen']))
     df[missing_regimens] = 0
-        
-    rename_map = dict(zip(regimens_features, regimens_renamed))
-    df = df.rename(columns=rename_map)
+
+    df = pd.get_dummies(df, columns=['regimen'], prefix='', prefix_sep='')
 
     df['regimen_GI_IRINO Q3W'] = False
     df['regimen_GI_PACLITAXEL'] = False
