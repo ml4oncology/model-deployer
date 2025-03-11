@@ -36,11 +36,6 @@ if __name__ == "__main__":
     data_dir = f'{ROOT_DIR}/Data'
     fig_dir = f'{ROOT_DIR}/Figures'
     results_output = f"{anchor}_output.csv" 
-
-    info_dir= f'{ROOT_DIR}/Infos'
-    train_param_dir = f'{ROOT_DIR}/Infos/Train_Data_parameters'
-    code_dir = f'{ROOT_DIR}/Codes' # TODO: load config.yaml here (the only time code_dir is used)
-    model_dir = f'{ROOT_DIR}/Models' 
     
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)

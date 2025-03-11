@@ -6,22 +6,18 @@ import pandas as pd
 from data_prep.preprocess.chemo import get_treatment_data
 from data_prep.preprocess.emergency import get_emergency_room_data
 from make_clinical_dataset.label import get_ED_labels
+from loader import Config
+
 from ml_common.eval import get_model_performance
 
 import warnings
 warnings.filterwarnings("ignore")
 
 
-def get_patients_with_completed_trt(info_dir, chemo_file, start_date, end_date, df, anchor):
-    # Load data
-    EPR_to_EPIC_regimen_map = pd.read_excel(f'{info_dir}/A2R_EPIC_GI_regimen_map.xlsx')
-    EPR_to_EPIC_regimen_map = dict(EPR_to_EPIC_regimen_map[['PROTOCOL_DISPLAY_NAME','Mapped_Name_All']].to_numpy())
-    EPR_regimens = pd.read_csv(f'{info_dir}/opis_regimen_list.csv')
-    EPR_regimens.columns = EPR_regimens.columns.str.lower()
-    
+def get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df, anchor):    
     # Get treatment data
     data_pull_day = None
-    chemo_data = get_treatment_data(chemo_file, EPR_regimens, EPR_to_EPIC_regimen_map, data_pull_day, anchor)
+    chemo_data = get_treatment_data(chemo_file, config.epr_regimens, config.epr2epic_regimen_map, data_pull_day, anchor)
     
     # Filter chemo_data by date range
     treatment_date_mask = (pd.to_datetime(chemo_data['treatment_date']) >= pd.to_datetime(start_date)) & \
@@ -60,8 +56,6 @@ if __name__ == "__main__":
     # TODO: maybe we should only make data-dir and model-dir and info-dir into CLI arguments and remove root-dir? 
     #       for better generalizability for end-users
     data_dir = f'{ROOT_DIR}/Data' #Data
-    info_dir= f'{ROOT_DIR}/Infos'
-    code_dir = f'{ROOT_DIR}/Codes' # TODO: load config.yaml here (the only time code_dir is used)
     pred_file = f"{anchor}_output.csv"
     perf_file = f"{anchor}_model_perf.csv"
     
@@ -75,6 +69,8 @@ if __name__ == "__main__":
     date_col = date_col_map[anchor]
     chemo_file = f"{data_dir}/{proj_name}_chemo_{postfix}{monthly_pull_date}.csv"
     ED_visits_file = f"{data_dir}/{proj_name}_ED_visits_{postfix}{monthly_pull_date}.csv"
+
+    config = Config(info_dir=f'{ROOT_DIR}/Infos')
     
     ############################ Analyze data #################################
 
@@ -84,11 +80,11 @@ if __name__ == "__main__":
     df['assessment_date'] = df[date_col]
 
     # Merge ED visit dates and true labels to Model prediction file
-    ed_visit = get_emergency_room_data(ED_visits_file, '')
+    ed_visit = get_emergency_room_data(ED_visits_file, anchor='')
     df_ED_visit = get_ED_labels(df, ed_visit)
     
     # Sort patients only with completed treatments during the month
-    df_ED_visit = get_patients_with_completed_trt(info_dir, chemo_file, start_date, end_date, df_ED_visit, anchor)
+    df_ED_visit = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df_ED_visit, anchor)
     
     ######################  Check model Performance ###########################
     
@@ -98,19 +94,21 @@ if __name__ == "__main__":
     label_col = 'target_ED_30d'
     pred_col = 'ed_pred_prob'
     
-    # Load pre-defined prediction thresholds
-    thresholds = pd.read_excel(f'{info_dir}/ED_Prediction_Threshold.xlsx')
-    thresholds_treatment = thresholds[thresholds['Model_anchor']==f'{anchor.title()}-anchored']
+    # Get pre-defined prediction thresholds
+    thresholds = config.thresholds
+    thresholds = thresholds.query(f'Model_anchor == "{anchor.title()}-anchored"')
 
     model_results = []
-    for idx, row in thresholds_treatment.iterrows(): 
-          assert row['Labels'] == 'ED_visit'
-          performance_metrics = get_model_performance(df_ED_visit, label_col, pred_col, 
-                                                      pred_thresh=row['Prediction_threshold'], 
-                                                      main_date_col=date_col, event_date_col=event_col)
-          performance_metrics['Anchor'] = anchor
-          performance_metrics['Alarm rate'] = row['Alarm_rate']     
-          model_results.append(performance_metrics)
+    for idx, row in thresholds.iterrows(): 
+        assert row['Labels'] == 'ED_visit'
+        performance_metrics = get_model_performance(
+            df_ED_visit, label_col, pred_col, 
+                pred_thresh=row['Prediction_threshold'], 
+                main_date_col=date_col, event_date_col=event_col
+            )
+        performance_metrics['Anchor'] = anchor
+        performance_metrics['Alarm rate'] = row['Alarm_rate']     
+        model_results.append(performance_metrics)
             
     ######################  Model Performance using seismometer ###########################
     
