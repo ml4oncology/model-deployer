@@ -81,7 +81,9 @@ if __name__ == "__main__":
 
     # Merge ED visit dates and true labels to Model prediction file
     ed_visit = get_emergency_room_data(ED_visits_file, anchor='')
-    df_ED_visit = get_ED_labels(df, ed_visit)
+    df_ED_visit = get_ED_labels(df, ed_visit, lookahead_window=31)
+    # filter out cases where ED visit occurred on the same day
+    df_ED_visit = df_ED_visit[(df_ED_visit['target_ED_date'] - df_ED_visit['assessment_date']).dt.days != 0]
     
     # Sort patients only with completed treatments during the month
     df_ED_visit = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df_ED_visit, anchor)
@@ -91,7 +93,7 @@ if __name__ == "__main__":
     print(f"=========== Anchored on {date_col} ====================")
     
     event_col = 'target_ED_date'
-    label_col = 'target_ED_30d'
+    label_col = 'target_ED_31d'
     pred_col = 'ed_pred_prob'
     
     # Get pre-defined prediction thresholds
