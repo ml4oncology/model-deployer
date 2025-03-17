@@ -11,9 +11,9 @@ authors = [
     { name = "Kevin He", email = "Kevin.He@uhn.ca" }
 ]
 dependencies = [
-    "ml_common @ git+https://github.com/ml4oncology/ml-common.git",
-    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git",
-    "preduce @ git+https://github.com/ml4oncology/preduce.git",
+    "ml_common @ git+https://github.com/ml4oncology/ml-common.git@v0.1.0",
+    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v0.1.0",
+    "preduce @ git+https://github.com/ml4oncology/preduce.git@v0.1.0",
     "seismometer @ git+https://github.com/epic-open-source/seismometer.git"
 ]
 
