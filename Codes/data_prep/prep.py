@@ -10,6 +10,7 @@ def encode_regimens(df, regimen_data):
     df = pd.get_dummies(df, columns=['regimen'], prefix='', prefix_sep='')
     return df
 
+
 def encode_intent(df):
     df = pd.get_dummies(df, columns=['intent'])
     return df
