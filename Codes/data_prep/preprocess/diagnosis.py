@@ -22,12 +22,6 @@ def process_demographic_data(df, cancer_sites):
     other_sites =  [site for site in cancer.columns if site not in cancer_sites]
     cancer['cancer_site_other'] = cancer[other_sites].any(axis=1)
     cancer.drop(columns=other_sites)
-    
-    # create missing cancer sites required by the model
-    # TODO: centralize all creation of missing columns
-    missing_sites = [site for site in cancer_sites if site not in cancer.columns]
-    cancer[missing_sites] = False
-    
     df = df.join(cancer)
 
     # combine patients with mutliple diagnoses into one row

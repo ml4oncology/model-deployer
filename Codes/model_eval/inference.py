@@ -17,21 +17,19 @@ def get_ED_visit_model_output(model, df, thresholds, fig_dir, anchor):
         meta_cols = ['mrn', 'tx_sched_date','clinic_date']
     elif anchor == "treatment":
         meta_cols = ['mrn', 'treatment_date']
-
-    ED_model = model.model
         
     # Separate patient id and visit date information
     result = df[meta_cols].copy()
     
     # Reorder model features according to the order used in training
-    X = df[ED_model[0].feature_names_in_]
+    X = df[model.model_features]
     
     # Drop any row that contains NaN => to work with RF 
     X = X.dropna() # drop rows with nan values
     result = result[result.index.isin(X.index)]
     
     # Generate predictions and combine with the result
-    result['ed_pred_prob'] = predict(ED_model, X) # probability of the positive class
+    result['ed_pred_prob'] = predict(model.model, X) # probability of the positive class
     
     # Generate binary predictions based on these pre-defined thresholds
     ct=1

@@ -23,7 +23,10 @@ class Config:
 
 
 class Model:
-    """Loads ML models and pipeline parameters"""
+    """Loads ML models and pipeline parameters
+
+    #TODO: support multiple models / targets
+    """
     def __init__(self, model_dir: str, prep_dir: str, anchor: str):
         with open(f'{Path(__file__).parent}/data_prep/config.yaml') as file:
             self.prep_cfg = yaml.safe_load(file)
@@ -36,6 +39,7 @@ class Model:
             self.prep = load_pickle(prep_dir, 'prep_ED_visit_clinic_anchored')
             # NOTE: Ensure XGBoost version 2.0.3 is installed (pip install xgboost==2.0.3 --user)
             self.model = load_pickle(model_dir, 'XGB_ED_visit_clinic_anchored')
+        self.model_features = self.model[0].feature_names_in_
 
         # column ordering needs to match
         # TODO: use the scaler, imputer, etc's pre-existing columns in ml-common.prep

@@ -44,9 +44,13 @@ def final_process(
     if model_name == 'symp':
         df = prep_symp_data(df)
 
+    # Recreate any missing columns
+    missing_cols = [col for col in model.model_features if col not in df.columns]
+    df[missing_cols] = 0
+
     # Remove columns not used in training (keep the mrn and dates though)
     cols = df.columns
-    cols = cols[cols.str.contains('mrn|date') | cols.isin(model.model[0].feature_names_in_)].tolist()
+    cols = cols[cols.str.contains('mrn|date') | cols.isin(model.model_features)].tolist()
     df = df[cols]
     
     # Transform Data: Impute, Normalize, and Clip
