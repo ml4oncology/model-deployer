@@ -48,7 +48,7 @@ def get_ED_visit_model_output(model, df, thresholds, fig_dir, anchor):
     return result
 
 
-def get_symp_model_output(df, thresholds, model_dir, anchor):
+def get_symp_model_output(df, thresholds, model_dir):
     # TODO: support trying out multiple different models per target
     # TODO: create a config file that maps targets with the model names 
     #       (i.e. Pain: [LGBM_pain.pkl, Mistral_pain.pkl, etc])

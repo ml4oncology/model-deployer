@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument('--end-date', type=str, default='20241130') 
     parser.add_argument('--monthly-pull-date', type=str, default='20250103')
     parser.add_argument('--output-folder', type=str, default='./Outputs')
-    parser.add_argument('--model-anchor', type=str, default='clinic') # treatment clinic 
+    parser.add_argument('--model-anchor', type=str, choices=['clinic', 'treatment'], default='clinic')
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
     parser.add_argument('--root-dir', type=str, default='.') 
     args = parser.parse_args()

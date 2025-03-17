@@ -36,3 +36,9 @@ class Model:
             self.prep = load_pickle(prep_dir, 'prep_ED_visit_clinic_anchored')
             # NOTE: Ensure XGBoost version 2.0.3 is installed (pip install xgboost==2.0.3 --user)
             self.model = load_pickle(model_dir, 'XGB_ED_visit_clinic_anchored')
+
+        # column ordering needs to match
+        # TODO: use the scaler, imputer, etc's pre-existing columns in ml-common.prep
+        self.prep.norm_cols = self.prep.scaler.feature_names_in_
+        self.prep.imp.impute_cols['mean'] = self.prep.imp.imputer['mean'].feature_names_in_
+        self.prep.imp.impute_cols['most_frequent'] = self.prep.imp.imputer['most_frequent'].feature_names_in_
