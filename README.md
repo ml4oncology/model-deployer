@@ -9,10 +9,10 @@ AIM2REDUCE_DATA_YYYYMMDD.csv
 AIM2REDUCE_DATA_monthly_YYYYMMDD.csv 
 - patients and their historical records who had a treatment since March 2024 until the month before the date
 - pulled monthly
-AIM2REDUCE_chemo_weekly_20250303.csv
+AIM2REDUCE_DATA_weekly_20250303.csv
 - patients and their historical records who had a clinic visit on the day of and have treatment scheduled within the next 5 days
 - pulled weekly
-AIM2REDUCE_chemo_weekly_monthly_20250303.csv
+AIM2REDUCE_DATA_weekly_monthly_20250303.csv
 - patients and their historical records who had a clinic visit since Sep 2024 until the month before the date
 - pulled monthly
 
