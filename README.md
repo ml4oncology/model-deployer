@@ -4,7 +4,7 @@ Silent deployment of AIM2REDUCE models to predict undesirable cancer events in P
 
 # Project Organization
 ```
-├── Codes           <- The source code
+├── src             <- The source code
 ├── Data            <- The daily, weekly, and monthly data pulls
 ├── Models          <- ML models
 └── Infos           <- Configuration files (regimen mapping, thresholds, etc)
@@ -19,7 +19,7 @@ AIM2REDUCE_DATA_monthly_YYYYMMDD.csv
 - pulled monthly
 AIM2REDUCE_DATA_weekly_YYYYMMDD.csv
 - patients and their historical records who had a clinic visit on the day of and have treatment scheduled within the next 5 days
-- pulled weekly
+- pulled daily
 AIM2REDUCE_DATA_weekly_monthly_YYYYMMDD.csv
 - patients and their historical records who had a clinic visit since Sep 2024 until the month before the date
 - pulled monthly
