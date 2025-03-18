@@ -57,5 +57,5 @@ def clean_emergency_data(df: pd.DataFrame) -> pd.DataFrame:
     # clean column names
     df.columns = df.columns.str.lower()
     df = df.rename(columns={'patient_id': 'mrn', 'emergency_admission_date': 'event_date'})
-    df['event_date'] = pd.to_datetime(df['event_date'], format="%Y-%m-%d %H:%M:%S")
+    df['event_date'] = pd.to_datetime(df['event_date'])
     return df
