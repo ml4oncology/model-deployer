@@ -11,11 +11,12 @@ authors = [
     { name = "Kevin He", email = "Kevin.He@uhn.ca" }
 ]
 dependencies = [
+    "xgboost==2.0.3",
     "ml_common @ git+https://github.com/ml4oncology/ml-common.git",
     "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git",
-    "preduce @ git+https://github.com/ml4oncology/preduce.git"
-    "seismometer @ git+https://github.com/epic-open-source/seismometer.git
+    "preduce @ git+https://github.com/ml4oncology/preduce.git",
+    "seismometer @ git+https://github.com/epic-open-source/seismometer.git"
 ]
 
 [tool.setuptools]
-package-dir = {"deployer" = "Codes/data_prep"}
+package-dir = {"deployer" = "src"}

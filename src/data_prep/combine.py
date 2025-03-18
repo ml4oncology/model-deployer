@@ -6,8 +6,6 @@ import logging
 import pandas as pd
 import numpy as np
 
-import yaml
-
 from make_clinical_dataset.combine import (
     add_engineered_features, 
     combine_demographic_to_main_data,
@@ -20,11 +18,10 @@ from ml_common.anchor import merge_closest_measurements
 logger.setLevel(logging.WARNING)
 
 
-def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
+def combine_features(cfg: dict, feats: tuple[pd.DataFrame], data_pull_date: str, anchor: str):
     """Combine the features into one unified dataset
     """
-    with open(f'{code_dir}/data_prep/config.yaml') as file:
-        cfg = yaml.safe_load(file)
+    sym, dmg, trt, lab, erv = feats
 
     if anchor == 'treatment':
         df = trt
@@ -48,19 +45,9 @@ def combine_features(lab, trt, dmg, sym, erv, code_dir, data_pull_date, anchor):
         parallelize=False
     )
     df = add_engineered_features(df, 'assessment_date')
-    
+
     # Add missing feature
     df['hematocrit'] = np.nan
-    # Drop columns
-    drop_cols = [
-        'esas_constipation', 
-        'esas_diarrhea', 
-        'esas_sleep', 
-        'activated_partial_thromboplastin_time',
-        'carbohydrate_antigen_19-9', 
-        'prothrombin_time_international_normalized_ratio'
-    ]
-    df = df.drop(columns=drop_cols, errors='ignore')
     
     return df
     
