@@ -1,16 +1,14 @@
 import argparse
 import os
+import warnings
 
 import pandas as pd
-
 from data_prep.preprocess.chemo import get_treatment_data
 from data_prep.preprocess.emergency import get_emergency_room_data
-from make_clinical_dataset.label import get_ED_labels
 from loader import Config
-
+from make_clinical_dataset.label import get_ED_labels
 from ml_common.eval import get_model_performance
 
-import warnings
 warnings.filterwarnings("ignore")
 
 
@@ -87,6 +85,9 @@ if __name__ == "__main__":
     
     # Sort patients only with completed treatments during the month
     df_ED_visit = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df_ED_visit, anchor)
+
+    # Save the final data
+    df_ED_visit.to_parquet(f'{output_folder}/{monthly_pull_date}_{anchor}_ED_visit_data.parquet', index=False)
     
     ######################  Check model Performance ###########################
     
