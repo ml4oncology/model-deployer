@@ -1,15 +1,14 @@
 import argparse
 import os
-
-import pandas as pd
-from tqdm import tqdm
+import warnings
 from collections import defaultdict
 
+import pandas as pd
 from data_prep.final_processing import final_process
 from loader import Config, Model
 from model_eval.inference import get_ED_visit_model_output
+from tqdm import tqdm
 
-import warnings
 warnings.filterwarnings("ignore")
 
 
@@ -57,7 +56,7 @@ if __name__ == "__main__":
     postfix_map = {'treatment': '', 'clinic': 'weekly_'}
 
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
-    results = defaultdict(list)
+    results, input_data = [], []
     for i, data_pull_date in tqdm(enumerate(date_range)): 
 
         print(f'**** Processing #{i}: {data_pull_date} *****')
@@ -75,9 +74,13 @@ if __name__ == "__main__":
             ##******************** ED **********************##
             ED_result = get_ED_visit_model_output(model, prepared_data_ED, thresholds, fig_dir, anchor)
 
-            results[anchor].append(ED_result)
+            input_data.append(prepared_data_ED)
+            results.append(ED_result)
         else:
             print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
     
-    results[anchor] = pd.concat(results[anchor], ignore_index=True, axis=0)
-    results[anchor].to_csv(f"{output_folder}/{results_output}", index=False)
+    results = pd.concat(results, ignore_index=True, axis=0)
+    results.to_csv(f"{output_folder}/{results_output}", index=False)
+
+    input_data = pd.concat(input_data, ignore_index=True, axis=0)
+    input_data.to_parquet(f"{output_folder}/input_{data_pull_date}_{anchor}.parquet")

@@ -85,9 +85,6 @@ if __name__ == "__main__":
     
     # Sort patients only with completed treatments during the month
     df_ED_visit = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df_ED_visit, anchor)
-
-    # Save the final data
-    df_ED_visit.to_parquet(f'{output_folder}/{monthly_pull_date}_{anchor}_ED_visit_data.parquet', index=False)
     
     ######################  Check model Performance ###########################
     
