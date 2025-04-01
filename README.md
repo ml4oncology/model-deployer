@@ -9,6 +9,7 @@ pip install -e ".[dev]"
 
 # optional
 pre-commit install
+mypy --install-types
 ```
 
 # Project Organization
