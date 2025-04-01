@@ -26,8 +26,11 @@ def final_process(
     # Combine Features
     df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
     
-    #Get changes between treatment sessions
+    # Get changes between treatment sessions
     df = get_change_since_prev_session(df)
+
+    # Fill missing data that can be filled heuristically (zeros, max values, etc)
+    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=FILL_VALS[model.anchor])
     
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py
@@ -54,9 +57,6 @@ def final_process(
     # Transform Data: Impute, Normalize, and Clip
     df.loc[0, df.columns[df.isna().all()]] = 0
     df = model.prep.transform_data(df, one_hot_encode=False)
-    
-    # Fill remaining nan's
-    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=FILL_VALS[model.anchor])
     
     if model.anchor == 'treatment':
         # keep treatments scheduled for the next day
