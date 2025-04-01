@@ -1,15 +1,16 @@
 """
 Module to preprocess chemotherapy treatment data
 """
+from datetime import timedelta
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from datetime import timedelta 
-
-from data_prep.constants import DROP_CLINIC_COLUMNS
 from make_clinical_dataset.feat_eng import get_line_of_therapy
 from make_clinical_dataset.preprocess.opis import merge_same_day_treatments
+
+from .data_prep.constants import DROP_CLINIC_COLUMNS
+
 
 def get_treatment_data(
     chemo_data_file,

@@ -4,7 +4,6 @@ Script to load the models and generate predictions
 import pickle
 
 import numpy as np
-
 from model_eval.calc_shap import calc_plot_mean_shap_values
 
 
@@ -25,7 +24,9 @@ def get_ED_visit_model_output(model, df, thresholds, fig_dir, anchor):
     X = df[model.model_features]
     
     # Drop any row that contains NaN => to work with RF 
-    X = X.dropna() # drop rows with nan values
+    # NOTE: mostly when ['height', 'weight', 'body_surface_area'] is missing
+    # TODO: impute them instead of dropping
+    X = X.dropna() # drop rows with nan values 
     result = result[result.index.isin(X.index)]
     
     # Generate predictions and combine with the result

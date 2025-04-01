@@ -3,11 +3,12 @@ import os
 import warnings
 
 import pandas as pd
-from data_prep.preprocess.chemo import get_treatment_data
-from data_prep.preprocess.emergency import get_emergency_room_data
-from loader import Config
 from make_clinical_dataset.label import get_ED_labels
 from ml_common.eval import get_model_performance
+
+from .data_prep.preprocess.chemo import get_treatment_data
+from .data_prep.preprocess.emergency import get_emergency_room_data
+from .loader import Config
 
 warnings.filterwarnings("ignore")
 

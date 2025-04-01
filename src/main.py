@@ -1,7 +1,6 @@
 import argparse
 import os
 import warnings
-from collections import defaultdict
 
 import pandas as pd
 from data_prep.final_processing import final_process
