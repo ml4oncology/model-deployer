@@ -4,12 +4,13 @@ Final processing script
 from datetime import timedelta
 
 import pandas as pd
-from data_prep.build import build_features
-from data_prep.combine import combine_features
-from data_prep.prep import encode_intent, encode_regimens, prep_symp_data
-from loader import Config, Model
 from ml_common.engineer import get_change_since_prev_session
 from ml_common.prep import fill_missing_data_heuristically
+
+from .data_prep.build import build_features
+from .data_prep.combine import combine_features
+from .data_prep.prep import encode_intent, encode_regimens, prep_symp_data
+from .loader import Config, Model
 
 
 def final_process(
@@ -17,7 +18,6 @@ def final_process(
     model: Model,
     data_dir: str, 
     proj_name: str, 
-    model_name: str, 
     data_pull_day: str, 
 ):
     # Build Features
@@ -39,7 +39,7 @@ def final_process(
     df = encode_intent(df)
     
     # Remove / reorganize features for symptoms' models
-    if model_name == 'symp':
+    if model.name == 'symp':
         df = prep_symp_data(df)
 
     # Recreate any missing columns
