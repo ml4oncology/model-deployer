@@ -3,8 +3,7 @@ Module to preprocess emergency department visit (old pull) / emergency room data
 """
 
 import pandas as pd
-
-from .data_prep.constants import DROP_CLINIC_COLUMNS
+from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
 
 
 ###############################################################################

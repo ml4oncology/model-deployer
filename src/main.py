@@ -3,9 +3,9 @@ import os
 import warnings
 
 import pandas as pd
-from data_prep.final_processing import final_process
-from loader import Config, Model
-from model_eval.inference import get_ED_visit_model_output
+from deployer.data_prep.final_processing import final_process
+from deployer.loader import Config, Model
+from deployer.model_eval.inference import get_ED_visit_model_output
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -26,7 +26,7 @@ def parse_args():
 
     parser.add_argument('--output-dir', type=str, default='./Outputs')
     parser.add_argument('--data-dir', type=str, default='./Data')
-    parser.add_argument('--info-dir', type=str, default='./Info')
+    parser.add_argument('--info-dir', type=str, default='./Infos')
     parser.add_argument('--model-dir', type=str, default='./Models')
     args = parser.parse_args()
     return args

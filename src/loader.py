@@ -27,12 +27,6 @@ class Model:
 
     #TODO: support multiple models / targets
     """
-    # TODO: automatically store this info in ml-common.prep
-    FILL_VALS = {
-        'treatment': {'days_since_last_treatment': 4746, 'days_since_prev_ED_visit': 1822}, 
-        'clinic': {'days_since_last_treatment': 28, 'days_since_prev_ED_visit': 1821}
-    }
-    
     def __init__(self, model_dir: str, prep_dir: str, anchor: str, name: str | None = None):
         self.anchor = anchor
         self.name = name

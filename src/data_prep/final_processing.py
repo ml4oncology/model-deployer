@@ -4,13 +4,13 @@ Final processing script
 from datetime import timedelta
 
 import pandas as pd
+from deployer.data_prep.build import build_features
+from deployer.data_prep.combine import combine_features
+from deployer.data_prep.constants import FILL_VALS
+from deployer.data_prep.prep import encode_intent, encode_regimens, prep_symp_data
+from deployer.loader import Config, Model
 from ml_common.engineer import get_change_since_prev_session
 from ml_common.prep import fill_missing_data_heuristically
-
-from .data_prep.build import build_features
-from .data_prep.combine import combine_features
-from .data_prep.prep import encode_intent, encode_regimens, prep_symp_data
-from .loader import Config, Model
 
 
 def final_process(
@@ -56,7 +56,7 @@ def final_process(
     df = model.prep.transform_data(df, one_hot_encode=False)
     
     # Fill remaining nan's
-    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=model.FILL_VALS[model.anchor])
+    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=FILL_VALS[model.anchor])
     
     if model.anchor == 'treatment':
         # keep treatments scheduled for the next day

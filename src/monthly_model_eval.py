@@ -3,12 +3,11 @@ import os
 import warnings
 
 import pandas as pd
+from deployer.data_prep.preprocess.chemo import get_treatment_data
+from deployer.data_prep.preprocess.emergency import get_emergency_room_data
+from deployer.loader import Config
 from make_clinical_dataset.label import get_ED_labels
 from ml_common.eval import get_model_performance
-
-from .data_prep.preprocess.chemo import get_treatment_data
-from .data_prep.preprocess.emergency import get_emergency_room_data
-from .loader import Config
 
 warnings.filterwarnings("ignore")
 
@@ -51,7 +50,7 @@ def parse_args():
 
     parser.add_argument('--output-dir', type=str, default='./Outputs')
     parser.add_argument('--data-dir', type=str, default='./Data')
-    parser.add_argument('--info-dir', type=str, default='./Info')
+    parser.add_argument('--info-dir', type=str, default='./Infos')
     parser.add_argument('--model-dir', type=str, default='./Models')
     args = parser.parse_args()
     return args

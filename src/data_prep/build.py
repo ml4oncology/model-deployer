@@ -1,15 +1,13 @@
 """
 Script to turn raw data into features for modelling
 """
+from deployer.data_prep.preprocess.chemo import get_treatment_data
+from deployer.data_prep.preprocess.diagnosis import get_demographic_data
+from deployer.data_prep.preprocess.emergency import get_emergency_room_data
+from deployer.data_prep.preprocess.esas import get_symptoms_data
+from deployer.data_prep.preprocess.lab import get_lab_data
+from deployer.loader import Config
 
-import pandas as pd
-
-from data_prep.preprocess.diagnosis import get_demographic_data
-from data_prep.preprocess.esas import get_symptoms_data
-from data_prep.preprocess.emergency import get_emergency_room_data
-from data_prep.preprocess.lab import get_lab_data
-from data_prep.preprocess.chemo import get_treatment_data
-from loader import Config
 
 def build_features(
     config: Config, 

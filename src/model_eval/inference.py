@@ -4,8 +4,7 @@ Script to load the models and generate predictions
 import pickle
 
 import numpy as np
-
-from .model_eval.calc_shap import calc_plot_mean_shap_values
+from deployer.model_eval.calc_shap import calc_plot_mean_shap_values
 
 
 def predict(models, data):
@@ -16,7 +15,7 @@ def get_ED_visit_model_output(model, df, thresholds, fig_dir):
     if model.anchor == "clinic":
         meta_cols = ['mrn', 'tx_sched_date','clinic_date']
     elif model.anchor == "treatment":
-        model.meta_cols = ['mrn', 'treatment_date']
+        meta_cols = ['mrn', 'treatment_date']
         
     # Separate patient id and visit date information
     result = df[meta_cols].copy()
@@ -35,7 +34,7 @@ def get_ED_visit_model_output(model, df, thresholds, fig_dir):
     
     # Generate binary predictions based on these pre-defined thresholds
     for _, row in thresholds.iterrows():
-        assert row['label'] == 'ED_visit'
+        assert row['labels'] == 'ED_visit'
         alarm_rate = row['alarm_rate']
         result[f'ed_pred_{alarm_rate}'] = (result['ed_pred_prob'] > row['prediction_threshold']).astype(int)
     
