@@ -5,7 +5,7 @@ Silent deployment of AIM2REDUCE models to predict undesirable cancer events in P
 # Getting started
 ```bash
 git clone https://github.com/ml4oncology/model-deployer
-pip install -e .[dev]
+pip install -e ".[dev]"
 
 # optional
 pre-commit install
