@@ -13,6 +13,7 @@ authors = [
 dependencies = [
     "xgboost==2.0.3",
     "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v0.1.1",
+    "preduce @ git+https://github.com/ml4oncology/preduce.git@v0.1.1",
     "seismometer @ git+https://github.com/epic-open-source/seismometer.git"
 ]
 
