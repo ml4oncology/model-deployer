@@ -29,7 +29,7 @@ warn_return_any = true
 
 [tool.ruff]
 include = ["*.py", "pyproject.toml", "*.ipynb"]
-line-length = 88
+line-length = 120
 
 [tool.ruff.format]
 quote-style = "double"
