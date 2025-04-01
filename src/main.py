@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # Get pre-defined prediction thresholds
     thresholds = config.thresholds
     thresholds = thresholds.query(f'Model_anchor == "{anchor.title()}-anchored"')
-    thresholds = thresholds.set_index('Labels')['Prediction_threshold']
+    thresholds.columns = thresholds.columns.str.lower()
     
     # treatment anchored files named as eg. AIM2REDUCE_hematology_20241104
     # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_20241104
@@ -67,11 +67,11 @@ if __name__ == "__main__":
             ######################### Data Processing ################################
             ##******************** ED **********************##
             # Process and prepare data
-            prepared_data_ED = final_process(config, model, data_dir, proj_name, 'ED_visit', data_pull_date, anchor)
+            prepared_data_ED = final_process(config, model, data_dir, proj_name, 'ED_visit', data_pull_date)
 
             ######################### Model Evaluation ################################        
             ##******************** ED **********************##
-            ED_result = get_ED_visit_model_output(model, prepared_data_ED, thresholds, fig_dir, anchor)
+            ED_result = get_ED_visit_model_output(model, prepared_data_ED, thresholds)
 
             input_data.append(prepared_data_ED)
             results.append(ED_result)

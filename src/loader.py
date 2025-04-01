@@ -27,15 +27,24 @@ class Model:
 
     #TODO: support multiple models / targets
     """
+    # TODO: automatically store this info in ml-common.prep
+    FILL_VALS = {
+        'treatment': {'days_since_last_treatment': 4746, 'days_since_prev_ED_visit': 1822}, 
+        'clinic': {'days_since_last_treatment': 28, 'days_since_prev_ED_visit': 1821}
+    }
+    
     def __init__(self, model_dir: str, prep_dir: str, anchor: str):
-        with open(f'{Path(__file__).parent}/data_prep/config.yaml') as file:
+        self.anchor = anchor
+
+        config_path = f'{Path(__file__).parent}/data_prep/config.yaml'
+        with open(config_path) as file:
             self.prep_cfg = yaml.safe_load(file)
 
         # Emergency Department Visit
-        if anchor == 'treatment':
+        if self.anchor == 'treatment':
             self.prep = load_pickle(prep_dir, 'prep_ED_visit_trt_anchored')
             self.model = load_pickle(model_dir, 'RF_ED_visit_trt_anchored')
-        elif anchor == 'clinic':
+        elif self.anchor == 'clinic':
             self.prep = load_pickle(prep_dir, 'prep_ED_visit_clinic_anchored')
             self.model = load_pickle(model_dir, 'XGB_ED_visit_clinic_anchored')
         self.model_features = self.model[0].feature_names_in_

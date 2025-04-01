@@ -19,13 +19,12 @@ def final_process(
     proj_name: str, 
     model_name: str, 
     data_pull_day: str, 
-    anchor: str
 ):
     # Build Features
-    feats = build_features(config, data_dir, proj_name, data_pull_day, anchor)
+    feats = build_features(config, data_dir, proj_name, data_pull_day, model.anchor)
     
     # Combine Features
-    df = combine_features(model.prep_cfg, feats, data_pull_day, anchor)
+    df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
     
     #Get changes between treatment sessions
     df = get_change_since_prev_session(df)
@@ -57,9 +56,9 @@ def final_process(
     df = model.prep.transform_data(df, one_hot_encode=False)
     
     # Fill remaining nan's
-    df = fill_missing_data_heuristically(df)
+    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=model.FILL_VALS[model.anchor])
     
-    if anchor == 'treatment':
+    if model.anchor == 'treatment':
         # keep treatments scheduled for the next day
         mask = df['treatment_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
         df = df[mask]
