@@ -2,7 +2,7 @@
 .DS_store
 *.egg-info
 *.csv
-*.ruff_cache
+*.*_cache
 Infos/
 Models/
 Data/
