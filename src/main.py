@@ -1,16 +1,20 @@
 import argparse
 import os
+import warnings
 
 import pandas as pd
+from deployer.data_prep.final_processing import final_process
+from deployer.loader import Config, Model
+from deployer.model_eval.inference import get_ED_visit_model_output
 from tqdm import tqdm
-from collections import defaultdict
 
-from data_prep.final_processing import final_process
-from loader import Config, Model
-from model_eval.inference import get_ED_visit_model_output
-
-import warnings
 warnings.filterwarnings("ignore")
+
+
+POSTFIX_MAP = {
+    'treatment': '',  # treatment anchored files named as eg. AIM2REDUCE_hematology_20241104
+    'clinic': 'weekly_'  # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_20241104
+}
 
 
 def parse_args():
@@ -18,9 +22,12 @@ def parse_args():
     parser.add_argument('--start-date', type=str, default='20240904') 
     parser.add_argument('--end-date', type=str, default='20250101') 
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
-    parser.add_argument('--output-folder', type=str, default='./Outputs')
     parser.add_argument('--model-anchor', type=str, choices=['clinic', 'treatment'], default='clinic')
-    parser.add_argument('--root-dir', type=str, default='.')
+
+    parser.add_argument('--output-dir', type=str, default='./Outputs')
+    parser.add_argument('--data-dir', type=str, default='./Data')
+    parser.add_argument('--info-dir', type=str, default='./Infos')
+    parser.add_argument('--model-dir', type=str, default='./Models')
     args = parser.parse_args()
     return args
 
@@ -29,55 +36,56 @@ if __name__ == "__main__":
     start_date = args.start_date
     end_date = args.end_date
     proj_name = args.project_name
-    output_folder = args.output_folder
     anchor = args.model_anchor
-    ROOT_DIR = args.root_dir
+    output_dir = args.output_dir
+    data_dir = args.data_dir
+    info_dir = args.info_dir
+    model_dir = args.model_dir
 
-    data_dir = f'{ROOT_DIR}/Data'
-    fig_dir = f'{ROOT_DIR}/Figures'
     results_output = f"{anchor}_output.csv" 
     
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    config = Config(info_dir=f'{ROOT_DIR}/Infos')
+    config = Config(info_dir=info_dir)
     model = Model(
-        model_dir=f'{ROOT_DIR}/Models', 
-        prep_dir=f'{ROOT_DIR}/Infos/Train_Data_parameters', 
-        anchor=anchor
+        model_dir=model_dir, 
+        prep_dir=f'{info_dir}/Train_Data_parameters', 
+        anchor=anchor,
+        name='ED_visit'
     )
 
     # Get pre-defined prediction thresholds
     thresholds = config.thresholds
     thresholds = thresholds.query(f'Model_anchor == "{anchor.title()}-anchored"')
-    thresholds = thresholds.set_index('Labels')['Prediction_threshold']
-    
-    # treatment anchored files named as eg. AIM2REDUCE_hematology_20241104
-    # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_20241104
-    postfix_map = {'treatment': '', 'clinic': 'weekly_'}
+    thresholds.columns = thresholds.columns.str.lower()
 
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
-    results = defaultdict(list)
+    results, input_data = [], []
     for i, data_pull_date in tqdm(enumerate(date_range)): 
 
         print(f'**** Processing #{i}: {data_pull_date} *****')
     
-        postfix = postfix_map[anchor]
+        postfix = POSTFIX_MAP[anchor]
         chemo_file = f"{data_dir}/{proj_name}_chemo_{postfix}{data_pull_date}.csv"
         diagnosis_file = f"{data_dir}/{proj_name}_diagnosis_{postfix}{data_pull_date}.csv"
         if not pd.read_csv(chemo_file).empty and not pd.read_csv(diagnosis_file).empty:
             ######################### Data Processing ################################
             ##******************** ED **********************##
             # Process and prepare data
-            prepared_data_ED = final_process(config, model, data_dir, proj_name, 'ED_visit', data_pull_date, anchor)
+            prepared_data_ED = final_process(config, model, data_dir, proj_name, data_pull_date)
 
             ######################### Model Evaluation ################################        
             ##******************** ED **********************##
-            ED_result = get_ED_visit_model_output(model, prepared_data_ED, thresholds, fig_dir, anchor)
+            ED_result = get_ED_visit_model_output(model, prepared_data_ED, thresholds, f"{output_dir}/Figures")
 
-            results[anchor].append(ED_result)
+            input_data.append(prepared_data_ED)
+            results.append(ED_result)
         else:
             print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
     
-    results[anchor] = pd.concat(results[anchor], ignore_index=True, axis=0)
-    results[anchor].to_csv(f"{output_folder}/{results_output}", index=False)
+    results = pd.concat(results, ignore_index=True, axis=0)
+    results.to_csv(f"{output_dir}/{results_output}", index=False)
+
+    input_data = pd.concat(input_data, ignore_index=True, axis=0)
+    input_data.to_parquet(f"{output_dir}/input_{data_pull_date}_{anchor}.parquet")

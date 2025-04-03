@@ -3,7 +3,7 @@ Module to preprocess the demographic and diagnosis data
 """
 
 import pandas as pd
-from data_prep.constants import DROP_CLINIC_COLUMNS
+from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
 
 
 def get_demographic_data(diagnosis_data_file, cancer_sites, anchor):

@@ -3,17 +3,16 @@ Module to combine features
 """
 import logging
 
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 from make_clinical_dataset.combine import (
-    add_engineered_features, 
+    add_engineered_features,
     combine_demographic_to_main_data,
-    combine_event_to_main_data, 
-    combine_treatment_to_main_data
+    combine_event_to_main_data,
+    combine_treatment_to_main_data,
 )
-from ml_common.util import logger
 from ml_common.anchor import merge_closest_measurements
+from ml_common.util import logger
 
 logger.setLevel(logging.WARNING)
 

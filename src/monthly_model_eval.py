@@ -1,17 +1,26 @@
 import argparse
 import os
+import warnings
 
 import pandas as pd
-
-from data_prep.preprocess.chemo import get_treatment_data
-from data_prep.preprocess.emergency import get_emergency_room_data
+from deployer.data_prep.preprocess.chemo import get_treatment_data
+from deployer.data_prep.preprocess.emergency import get_emergency_room_data
+from deployer.loader import Config
 from make_clinical_dataset.label import get_ED_labels
-from loader import Config
-
 from ml_common.eval import get_model_performance
 
-import warnings
 warnings.filterwarnings("ignore")
+
+
+POSTFIX_MAP = {
+    'treatment': 'monthly_',  # treatment anchored files named as eg. AIM2REDUCE_hematology_monthly_20241104
+    'clinic': 'weekly_monthly_'  # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_monthly_20241104
+}
+
+DATE_COL_MAP = {
+    'treatment': 'treatment_date', 
+    'clinic': 'clinic_date'
+}
 
 
 def get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df, anchor):    
@@ -36,10 +45,13 @@ def parse_args():
     parser.add_argument('--start-date', type=str, default='20240904') 
     parser.add_argument('--end-date', type=str, default='20241130') 
     parser.add_argument('--monthly-pull-date', type=str, default='20250103')
-    parser.add_argument('--output-folder', type=str, default='./Outputs')
     parser.add_argument('--model-anchor', type=str, choices=['clinic', 'treatment'], default='clinic')
     parser.add_argument('--project-name', type=str, default='AIM2REDUCE')
-    parser.add_argument('--root-dir', type=str, default='.') 
+
+    parser.add_argument('--output-dir', type=str, default='./Outputs')
+    parser.add_argument('--data-dir', type=str, default='./Data')
+    parser.add_argument('--info-dir', type=str, default='./Infos')
+    parser.add_argument('--model-dir', type=str, default='./Models')
     args = parser.parse_args()
     return args
 
@@ -48,34 +60,31 @@ if __name__ == "__main__":
     start_date = args.start_date
     end_date = args.end_date
     monthly_pull_date = args.monthly_pull_date
-    output_folder = args.output_folder
     anchor = args.model_anchor
     proj_name = args.project_name
-    ROOT_DIR = args.root_dir
 
-    # TODO: maybe we should only make data-dir and model-dir and info-dir into CLI arguments and remove root-dir? 
-    #       for better generalizability for end-users
-    data_dir = f'{ROOT_DIR}/Data' #Data
+    output_dir = args.output_dir
+    data_dir = args.data_dir
+    info_dir = args.info_dir
+    model_dir = args.model_dir
+
     pred_file = f"{anchor}_output.csv"
     perf_file = f"{anchor}_model_perf.csv"
     
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
     
-    postfix_map = {'treatment': 'monthly_', 'clinic': 'weekly_monthly_'}
-    date_col_map = {'treatment': 'treatment_date', 'clinic': 'clinic_date'}
-    
-    postfix = postfix_map[anchor]
-    date_col = date_col_map[anchor]
+    postfix = POSTFIX_MAP[anchor]
+    date_col = DATE_COL_MAP[anchor]
     chemo_file = f"{data_dir}/{proj_name}_chemo_{postfix}{monthly_pull_date}.csv"
     ED_visits_file = f"{data_dir}/{proj_name}_ED_visits_{postfix}{monthly_pull_date}.csv"
 
-    config = Config(info_dir=f'{ROOT_DIR}/Infos')
+    config = Config(info_dir=info_dir)
     
     ############################ Analyze data #################################
 
     # Model Prediction file
-    df = pd.read_csv(f'{output_folder}/{pred_file}', parse_dates=[date_col])
+    df = pd.read_csv(f'{output_dir}/{pred_file}', parse_dates=[date_col])
     df = df[df[date_col].between(start_date, end_date)]
     df['assessment_date'] = df[date_col]
 
@@ -99,17 +108,18 @@ if __name__ == "__main__":
     # Get pre-defined prediction thresholds
     thresholds = config.thresholds
     thresholds = thresholds.query(f'Model_anchor == "{anchor.title()}-anchored"')
+    thresholds.columns = thresholds.columns.str.lower()
 
     model_results = []
     for idx, row in thresholds.iterrows(): 
-        assert row['Labels'] == 'ED_visit'
+        assert row['labels'] == 'ED_visit'
         performance_metrics = get_model_performance(
             df_ED_visit, label_col, pred_col, 
-                pred_thresh=row['Prediction_threshold'], 
+                pred_thresh=row['prediction_threshold'], 
                 main_date_col=date_col, event_date_col=event_col
             )
         performance_metrics['Anchor'] = anchor
-        performance_metrics['Alarm rate'] = row['Alarm_rate']     
+        performance_metrics['Alarm rate'] = row['alarm_rate']     
         model_results.append(performance_metrics)
             
     ######################  Model Performance using seismometer ###########################
@@ -130,6 +140,6 @@ if __name__ == "__main__":
     )
     
     ######################  Save Output ###########################
-    pd.DataFrame(model_results).to_csv(f"{output_folder}/{perf_file}", index=False)
+    pd.DataFrame(model_results).to_csv(f"{output_dir}/{perf_file}", index=False)
     print(f"Performance metrics saved to {perf_file}.")
                  

@@ -2,6 +2,16 @@
 
 Silent deployment of AIM2REDUCE models to predict undesirable cancer events in Princess Margaret hospital under the EPIC system.
 
+# Getting started
+```bash
+git clone https://github.com/ml4oncology/model-deployer
+pip install -e ".[dev]"
+
+# optional
+pre-commit install
+mypy --install-types
+```
+
 # Project Organization
 ```
 ├── src             <- The source code

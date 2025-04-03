@@ -1,9 +1,10 @@
 """
 Module to preprocess ESAS symptom data
 """
-import pandas as pd
 import numpy as np
-from data_prep.constants import DROP_CLINIC_COLUMNS
+import pandas as pd
+from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
+
 
 def get_symptoms_data(esas_data_file, anchor):
     df = pd.read_csv(esas_data_file)

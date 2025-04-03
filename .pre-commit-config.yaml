@@ -1,0 +1,40 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0  # Use the ref you want to point at
+    hooks:
+    - id: check-yaml
+    - id: check-toml
+
+  # linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 'v0.11.0'
+    hooks:
+    - id: ruff
+      args: [--fix, --exit-non-zero-on-fix]
+      types_or: [python, jupyter]
+    - id: ruff-format
+      types_or: [python, jupyter]
+
+  # type checkers
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+    - id: mypy
+      entry: python -m mypy --config-file pyproject.toml
+      language: system
+      types: [python]
+      exclude: "tests"
+
+  # quality assurance for jupyter notebooks
+  - repo: https://github.com/nbQA-dev/nbQA
+    rev: 1.9.1
+    hooks:
+    - id: nbqa-ruff
+      args: [--fix, --exit-non-zero-on-fix]
+
+  # - repo: local
+  #   hooks:
+  #   - id: pytest
+  #     name: pytest
+  #     entry: python3 -m pytest
+  #     always_run: true

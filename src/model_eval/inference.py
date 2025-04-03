@@ -4,18 +4,17 @@ Script to load the models and generate predictions
 import pickle
 
 import numpy as np
-
-from model_eval.calc_shap import calc_plot_mean_shap_values
+from deployer.model_eval.calc_shap import calc_plot_mean_shap_values
 
 
 def predict(models, data):
     # average across the folds
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
-def get_ED_visit_model_output(model, df, thresholds, fig_dir, anchor):
-    if anchor == "clinic":
+def get_ED_visit_model_output(model, df, thresholds, fig_dir):
+    if model.anchor == "clinic":
         meta_cols = ['mrn', 'tx_sched_date','clinic_date']
-    elif anchor == "treatment":
+    elif model.anchor == "treatment":
         meta_cols = ['mrn', 'treatment_date']
         
     # Separate patient id and visit date information
@@ -25,23 +24,22 @@ def get_ED_visit_model_output(model, df, thresholds, fig_dir, anchor):
     X = df[model.model_features]
     
     # Drop any row that contains NaN => to work with RF 
-    X = X.dropna() # drop rows with nan values
+    # NOTE: mostly when ['height', 'weight', 'body_surface_area'] is missing
+    # TODO: impute them instead of dropping
+    X = X.dropna()
     result = result[result.index.isin(X.index)]
     
     # Generate predictions and combine with the result
     result['ed_pred_prob'] = predict(model.model, X) # probability of the positive class
     
     # Generate binary predictions based on these pre-defined thresholds
-    ct=1
-    for label, thresh in thresholds.items():
-        assert label == 'ED_visit'
-        result[f'ed_pred_{10*ct}'] = (result['ed_pred_prob'] > thresh).astype(int)
-        ct+=1
+    for _, row in thresholds.iterrows():
+        assert row['labels'] == 'ED_visit'
+        alarm_rate = row['alarm_rate']
+        result[f'ed_pred_{alarm_rate}'] = (result['ed_pred_prob'] > row['prediction_threshold']).astype(int)
     
-    if anchor == "clinic":
-        ############### SHAP ##################
-        # shap_values = calc_plot_mean_shap_values(X, model, result, fig_dir)
-        pass
+    # Plot SHAP values
+    # shap_values = calc_plot_mean_shap_values(X, model, result, fig_dir)
         
     return result
 
