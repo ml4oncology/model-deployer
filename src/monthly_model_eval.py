@@ -3,7 +3,7 @@ import os
 import warnings
 
 import pandas as pd
-from deployer.constants import MONTHLY_POSTFIX_MAP
+from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
 from deployer.loader import Config

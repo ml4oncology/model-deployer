@@ -3,7 +3,7 @@ import os
 import warnings
 
 import pandas as pd
-from deployer.constants import DAILY_POSTFIX_MAP
+from deployer.data_prep.constants import DAILY_POSTFIX_MAP
 from deployer.data_prep.final_processing import final_process
 from deployer.loader import Config, Model
 from deployer.model_eval.inference import get_ED_visit_model_output
