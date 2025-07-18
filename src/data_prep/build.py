@@ -25,7 +25,7 @@ def build_features(
 
     feats = {}
     feats["symptom"] = get_symptoms_data(esas_file, anchor)
-    feats["demographic"] = get_demographic_data(diagnosis_file, config.cancer_site_list, anchor)
+    feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
     feats["treatment"] = get_treatment_data(
         chemo_file, config.epr_regimens, config.epr2epic_regimen_map, data_pull_day, anchor
     )

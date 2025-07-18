@@ -8,7 +8,7 @@ import pandas as pd
 from deployer.data_prep.build import build_features
 from deployer.data_prep.combine import combine_features
 from deployer.data_prep.constants import FILL_VALS
-from deployer.data_prep.prep import encode_intent, encode_regimens, prep_symp_data
+from deployer.data_prep.prep import encode_intent, encode_primary_sites, encode_regimens, prep_symp_data
 from deployer.loader import Config, Model
 from ml_common.engineer import get_change_since_prev_session
 from ml_common.prep import fill_missing_data_heuristically
@@ -40,6 +40,7 @@ def final_process(
 
     # Encode Regimens and Intent
     df = encode_regimens(df, config.gi_regimens)
+    df = encode_primary_sites(df, config.cancer_site_list)
     df = encode_intent(df)
 
     # Remove / reorganize features for symptoms' models
@@ -52,7 +53,7 @@ def final_process(
 
     # Remove columns not used in training (keep the mrn and dates though)
     cols = df.columns
-    cols = cols[cols.str.contains("mrn|date") | cols.isin(model.model_features)].tolist()
+    cols = cols[cols.str.contains("mrn|date") | cols.isin(model.model_features)]
     df = df[cols]
 
     # Transform Data: Impute, Normalize, and Clip

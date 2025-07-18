@@ -13,7 +13,7 @@ from make_clinical_dataset.preprocess.opis import merge_same_day_treatments
 
 
 def get_treatment_data(
-    chemo_data_file,
+    chemo_data_file: str,
     epr_regimens: pd.DataFrame,
     epr_to_epic_regimen_map: dict,
     data_pull_day: Optional[str] = None,
