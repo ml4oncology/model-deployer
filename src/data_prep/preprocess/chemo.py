@@ -128,7 +128,7 @@ def filter_chemo_treatments(df, anchor: str, data_pull_day: str | None = None):
     mask = df["trt_date_utc"] < pull_date
     if anchor == "treatment":
         mask |= df["tx_sched_date"] == pull_date + pd.Timedelta(days=1)
-    df = df[mask]
+    df = df[mask].copy()
 
     # fill missing treatment dates with scheduled treatment date
     df["trt_date_utc"] = df["trt_date_utc"].fillna(df["tx_sched_date"])
