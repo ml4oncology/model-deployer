@@ -3,7 +3,7 @@ import os
 import warnings
 
 import pandas as pd
-from deployer.data_prep.final_processing import get_data
+from deployer.data_prep.pipeline import get_data
 from deployer.loader import Config, Model
 from deployer.model_eval.inference import get_model_output
 from tqdm import tqdm
@@ -15,7 +15,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", type=str, default="20240904")
     parser.add_argument("--end-date", type=str, default="20250101")
-    parser.add_argument("--project-name", type=str, default="AIM2REDUCE")
     parser.add_argument("--model-anchor", type=str, choices=["clinic", "treatment"], default="clinic")
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
@@ -30,7 +29,6 @@ if __name__ == "__main__":
     args = parse_args()
     start_date = args.start_date
     end_date = args.end_date
-    proj_name = args.project_name
     anchor = args.model_anchor
     output_dir = args.output_dir
     data_dir = args.data_dir
@@ -55,12 +53,12 @@ if __name__ == "__main__":
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
 
-        data = get_data(config, model, data_dir, proj_name, data_pull_date)
+        data = get_data(config, model, data_dir, data_pull_date)
         if "error" in data:
             print(data["error"])
             continue
 
-        result = get_model_output(model, data, thresholds, f"{output_dir}/Figures")
+        result = get_model_output(model, data, thresholds)
 
         inputs.append(data)
         results.append(result)

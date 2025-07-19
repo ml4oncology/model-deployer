@@ -3,7 +3,7 @@ import os
 import warnings
 
 import pandas as pd
-from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP
+from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
 from deployer.loader import Config
@@ -39,7 +39,6 @@ def parse_args():
     parser.add_argument("--end-date", type=str, default="20241130")
     parser.add_argument("--monthly-pull-date", type=str, default="20250103")
     parser.add_argument("--model-anchor", type=str, choices=["clinic", "treatment"], default="clinic")
-    parser.add_argument("--project-name", type=str, default="AIM2REDUCE")
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")
@@ -55,7 +54,6 @@ if __name__ == "__main__":
     end_date = args.end_date
     monthly_pull_date = args.monthly_pull_date
     anchor = args.model_anchor
-    proj_name = args.project_name
 
     output_dir = args.output_dir
     data_dir = args.data_dir
@@ -70,8 +68,8 @@ if __name__ == "__main__":
 
     postfix = MONTHLY_POSTFIX_MAP[anchor]
     date_col = DATE_COL_MAP[anchor]
-    chemo_file = f"{data_dir}/{proj_name}_chemo_{postfix}{monthly_pull_date}.csv"
-    ED_visits_file = f"{data_dir}/{proj_name}_ED_visits_{postfix}{monthly_pull_date}.csv"
+    chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{monthly_pull_date}.csv"
+    ED_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{monthly_pull_date}.csv"
 
     config = Config(info_dir=info_dir)
 

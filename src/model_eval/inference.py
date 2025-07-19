@@ -1,11 +1,12 @@
 """
-Script to load the models and generate predictions
+Module to generate predictions
 """
 
 import pickle
 
 import numpy as np
-from deployer.model_eval.calc_shap import calc_plot_mean_shap_values
+import pandas as pd
+from deployer.loader import Model
 
 
 def predict(models, data):
@@ -13,7 +14,7 @@ def predict(models, data):
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
 
-def get_model_output(model, df, thresholds, fig_dir):
+def get_model_output(model: Model, df: pd.DataFrame, thresholds: pd.DataFrame) -> pd.DataFrame:
     if model.anchor == "clinic":
         meta_cols = ["mrn", "tx_sched_date", "clinic_date"]
     elif model.anchor == "treatment":
@@ -40,13 +41,10 @@ def get_model_output(model, df, thresholds, fig_dir):
         alarm_rate = row["alarm_rate"]
         result[f"ed_pred_{alarm_rate}"] = (result["ed_pred_prob"] > row["prediction_threshold"]).astype(int)
 
-    # Plot SHAP values
-    # shap_values = calc_plot_mean_shap_values(X, model, result, fig_dir)
-
     return result
 
 
-def get_symp_model_output(df, thresholds, model_dir):
+def get_symp_model_output(df: pd.DataFrame, thresholds: pd.DataFrame, model_dir: str) -> pd.DataFrame:
     # TODO: support trying out multiple different models per target
     # TODO: create a config file that maps targets with the model names
     #       (i.e. Pain: [LGBM_pain.pkl, Mistral_pain.pkl, etc])

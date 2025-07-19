@@ -1,3 +1,5 @@
+PROJ_NAME = "AIM2REDUCE"
+
 DROP_CLINIC_COLUMNS = [
     "MRN",
     "Lab Type",
