@@ -23,6 +23,9 @@ def build_features(
     ed_file = f"{data_dir}/{proj_name}_ED_visits_{postfix}{data_pull_day}.csv"
     diagnosis_file = f"{data_dir}/{proj_name}_diagnosis_{postfix}{data_pull_day}.csv"
 
+    if pd.read_csv(chemo_file).empty or pd.read_csv(diagnosis_file).empty:
+        return {"error": f"No Patient {anchor.title()} Data for: {data_pull_day}"}
+
     feats = {}
     feats["symptom"] = get_symptoms_data(esas_file, anchor)
     feats["demographic"] = get_demographic_data(diagnosis_file, anchor)

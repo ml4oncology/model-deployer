@@ -14,15 +14,17 @@ from ml_common.engineer import get_change_since_prev_session
 from ml_common.prep import fill_missing_data_heuristically
 
 
-def final_process(
+def get_data(
     config: Config,
     model: Model,
     data_dir: str,
     proj_name: str,
     data_pull_day: str,
-) -> pd.DataFrame:
+) -> pd.DataFrame | dict[str, str]:
     # Build Features
     feats = build_features(config, data_dir, proj_name, data_pull_day, model.anchor)
+    if "error" in feats:
+        return feats
 
     # Combine Features
     df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
@@ -61,7 +63,7 @@ def final_process(
     df = model.prep.transform_data(df, one_hot_encode=False)
 
     if model.anchor == "treatment":
-        # keep treatments scheduled for the next day
+        # Only keep treatments scheduled for the next day
         mask = df["treatment_date"] == pd.to_datetime(data_pull_day) + timedelta(days=1)
         df = df[mask]
 

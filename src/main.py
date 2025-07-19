@@ -3,10 +3,9 @@ import os
 import warnings
 
 import pandas as pd
-from deployer.data_prep.constants import DAILY_POSTFIX_MAP
-from deployer.data_prep.final_processing import final_process
+from deployer.data_prep.final_processing import get_data
 from deployer.loader import Config, Model
-from deployer.model_eval.inference import get_ED_visit_model_output
+from deployer.model_eval.inference import get_model_output
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -52,30 +51,22 @@ if __name__ == "__main__":
     thresholds.columns = thresholds.columns.str.lower()
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
-    results, input_data = [], []
+    results, inputs = [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
 
-        postfix = DAILY_POSTFIX_MAP[anchor]
-        chemo_file = f"{data_dir}/{proj_name}_chemo_{postfix}{data_pull_date}.csv"
-        diagnosis_file = f"{data_dir}/{proj_name}_diagnosis_{postfix}{data_pull_date}.csv"
-        if not pd.read_csv(chemo_file).empty and not pd.read_csv(diagnosis_file).empty:
-            ######################### Data Processing ################################
-            ##******************** ED **********************##
-            # Process and prepare data
-            prepared_data = final_process(config, model, data_dir, proj_name, data_pull_date)
+        data = get_data(config, model, data_dir, proj_name, data_pull_date)
+        if "error" in data:
+            print(data["error"])
+            continue
 
-            ######################### Model Evaluation ################################
-            ##******************** ED **********************##
-            ED_result = get_ED_visit_model_output(model, prepared_data, thresholds, f"{output_dir}/Figures")
+        result = get_model_output(model, data, thresholds, f"{output_dir}/Figures")
 
-            input_data.append(prepared_data)
-            results.append(ED_result)
-        else:
-            print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
+        inputs.append(data)
+        results.append(result)
 
     res = pd.concat(results, ignore_index=True, axis=0)
     res.to_csv(f"{output_dir}/{results_output}", index=False)
 
-    inp = pd.concat(input_data, ignore_index=True, axis=0)
+    inp = pd.concat(inputs, ignore_index=True, axis=0)
     inp.to_parquet(f"{output_dir}/input_{data_pull_date}_{anchor}.parquet")
