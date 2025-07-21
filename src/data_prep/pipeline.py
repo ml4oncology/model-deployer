@@ -28,17 +28,35 @@ from ml_common.util import logger
 logger.setLevel(logging.WARNING)
 
 
+def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: str) -> dict[str, pd.DataFrame]:
+    postfix = DAILY_POSTFIX_MAP[anchor]
+    biochem_file = f"{data_dir}/{PROJ_NAME}_biochemistry_{postfix}{data_pull_day}.csv"
+    hema_file = f"{data_dir}/{PROJ_NAME}_hematology_{postfix}{data_pull_day}.csv"
+    esas_file = f"{data_dir}/{PROJ_NAME}_ESAS_{postfix}{data_pull_day}.csv"
+    chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{data_pull_day}.csv"
+    ed_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{data_pull_day}.csv"
+    diagnosis_file = f"{data_dir}/{PROJ_NAME}_diagnosis_{postfix}{data_pull_day}.csv"
+
+    if pd.read_csv(chemo_file).empty or pd.read_csv(diagnosis_file).empty:
+        return {"error": f"No Patient {anchor.title()} Data for: {data_pull_day}"}
+
+    feats = {}
+    feats["symptom"] = get_symptoms_data(esas_file, anchor)
+    feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
+    feats["treatment"] = get_treatment_data(
+        chemo_file, config.epr_regimens, config.epr2epic_regimen_map, data_pull_day, anchor
+    )
+    feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
+    feats["emergency"] = get_emergency_room_data(ed_file, anchor)
+    return feats
+
+
 def get_data(
     config: Config,
     model: Model,
-    data_dir: str,
+    feats: dict[str, pd.DataFrame],
     data_pull_day: str,
-) -> pd.DataFrame | dict[str, str]:
-    # Build Features
-    feats = build_features(config, data_dir, data_pull_day, model.anchor)
-    if "error" in feats:
-        return feats
-
+) -> pd.DataFrame:
     # Combine Features
     df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
 
@@ -81,29 +99,6 @@ def get_data(
         df = df[mask]
 
     return df
-
-
-def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: str) -> dict[str, pd.DataFrame]:
-    postfix = DAILY_POSTFIX_MAP[anchor]
-    biochem_file = f"{data_dir}/{PROJ_NAME}_biochemistry_{postfix}{data_pull_day}.csv"
-    hema_file = f"{data_dir}/{PROJ_NAME}_hematology_{postfix}{data_pull_day}.csv"
-    esas_file = f"{data_dir}/{PROJ_NAME}_ESAS_{postfix}{data_pull_day}.csv"
-    chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{data_pull_day}.csv"
-    ed_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{data_pull_day}.csv"
-    diagnosis_file = f"{data_dir}/{PROJ_NAME}_diagnosis_{postfix}{data_pull_day}.csv"
-
-    if pd.read_csv(chemo_file).empty or pd.read_csv(diagnosis_file).empty:
-        return {"error": f"No Patient {anchor.title()} Data for: {data_pull_day}"}
-
-    feats = {}
-    feats["symptom"] = get_symptoms_data(esas_file, anchor)
-    feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
-    feats["treatment"] = get_treatment_data(
-        chemo_file, config.epr_regimens, config.epr2epic_regimen_map, data_pull_day, anchor
-    )
-    feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
-    feats["emergency"] = get_emergency_room_data(ed_file, anchor)
-    return feats
 
 
 def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], data_pull_date: str, anchor: str):

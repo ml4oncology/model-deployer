@@ -3,7 +3,7 @@ import os
 import warnings
 
 import pandas as pd
-from deployer.data_prep.pipeline import get_data
+from deployer.data_prep.pipeline import build_features, get_data
 from deployer.loader import Config, Model
 from deployer.model_eval.inference import get_model_output
 from tqdm import tqdm
@@ -52,12 +52,12 @@ if __name__ == "__main__":
     results, inputs = [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
-
-        data = get_data(config, model, data_dir, data_pull_date)
-        if "error" in data:
-            print(data["error"])
+        feats = build_features(config, data_dir, data_pull_date, model.anchor)
+        if "error" in feats:
+            print(feats["error"])
             continue
 
+        data = get_data(config, model, feats, data_pull_date)
         result = get_model_output(model, data, thresholds)
 
         inputs.append(data)
