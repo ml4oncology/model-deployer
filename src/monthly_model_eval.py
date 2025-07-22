@@ -18,7 +18,7 @@ DATE_COL_MAP = {"treatment": "treatment_date", "clinic": "clinic_date"}
 def get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df, anchor):
     # Get treatment data
     data_pull_day = None
-    chemo_data = get_treatment_data(chemo_file, config.epr_regimens, config.epr2epic_regimen_map, data_pull_day, anchor)
+    chemo_data = get_treatment_data(chemo_file, config, data_pull_day, anchor)
 
     # Filter chemo_data by date range
     treatment_date_mask = (pd.to_datetime(chemo_data["treatment_date"]) >= pd.to_datetime(start_date)) & (

@@ -43,9 +43,7 @@ def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: st
     feats = {}
     feats["symptom"] = get_symptoms_data(esas_file, anchor)
     feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
-    feats["treatment"] = get_treatment_data(
-        chemo_file, config.epr_regimens, config.epr2epic_regimen_map, data_pull_day, anchor
-    )
+    feats["treatment"] = get_treatment_data(chemo_file, config, data_pull_day, anchor)
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
     feats["emergency"] = get_emergency_room_data(ed_file, anchor)
 
@@ -63,7 +61,7 @@ def get_data(
     data_pull_day: str,
 ) -> pd.DataFrame:
     # Combine Features
-    df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
+    df = combine_features(model.prep_cfg, feats, model.anchor)
 
     # Get changes between treatment sessions
     df["hematocrit"] = None  # need to add this missing feature here. TODO: clean this up
@@ -107,7 +105,7 @@ def get_data(
     return df
 
 
-def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], data_pull_date: str, anchor: str):
+def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
     """Combine the features into one unified dataset"""
     sym = feats["symptom"]
     dmg = feats["demographic"]

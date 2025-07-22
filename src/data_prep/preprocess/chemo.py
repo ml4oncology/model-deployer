@@ -5,14 +5,14 @@ Module to preprocess chemotherapy treatment data
 import numpy as np
 import pandas as pd
 from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
+from deployer.loader import Config
 from make_clinical_dataset.feat_eng import get_line_of_therapy
 from make_clinical_dataset.preprocess.opis import merge_same_day_treatments
 
 
 def get_treatment_data(
     chemo_data_file: str,
-    epr_regimens: pd.DataFrame,
-    epr_to_epic_regimen_map: dict,
+    config: Config,
     data_pull_day: str | None = None,
     anchor: str = "treatment",
 ) -> pd.DataFrame:
@@ -21,8 +21,7 @@ def get_treatment_data(
 
     Args:
         chemo_data_file (str): Path to the chemotherapy data CSV.
-        epr_regimens (pd.DataFrame): Selected EPR regimens during model training.
-        epr_to_epic_regimen_map (dict): Map between old EPR and new EPIC regimens.
+        config (Config): Configuration object containing EPR regimens and mapping.
         data_pull_day (str | None): Date of data pull.
         anchor (str): Anchor type, either 'treatment' or 'clinic'.
 
@@ -32,16 +31,12 @@ def get_treatment_data(
     df = pd.read_csv(chemo_data_file)
     if anchor == "clinic" and data_pull_day is not None:
         df = df.drop(columns=DROP_CLINIC_COLUMNS)
-    df = clean_treatment_data(df, epr_regimens, epr_to_epic_regimen_map)
+    df = clean_treatment_data(df, config)
     df = process_treatment_data(df, anchor, data_pull_day)
     return df
 
 
-def clean_treatment_data(
-    df: pd.DataFrame,
-    epr_regimens: pd.DataFrame,
-    epr_to_epic_regimen_map: dict[str, str],
-) -> pd.DataFrame:
+def clean_treatment_data(df: pd.DataFrame, config: Config) -> pd.DataFrame:
     """
     Clean and standardize treatment data columns and values.
     """
@@ -63,7 +58,7 @@ def clean_treatment_data(
     df["intent"] = df["intent"].replace("U", np.nan)
     df["intent"] = df["intent"].str.upper()
 
-    df = clean_regimens(df, epr_regimens, epr_to_epic_regimen_map)
+    df = clean_regimens(df, config)
     return df
 
 
@@ -103,19 +98,17 @@ def process_treatment_data(df: pd.DataFrame, anchor: str, data_pull_day: str | N
     return df
 
 
-def clean_regimens(
-    df: pd.DataFrame, epr_regimens: pd.DataFrame, epr_to_epic_regimen_map: dict[str, str]
-) -> pd.DataFrame:
+def clean_regimens(df: pd.DataFrame, config: Config) -> pd.DataFrame:
     # filter out rows with missing regimen info
     mask = df["regimen"].notnull()
     df = df[mask].copy()
 
-    # map regimens from EPR to EPIC
+    # map regimens from EPIC to EPR
     df["regimen_EPIC"] = df["regimen"]
-    df["regimen"] = df["regimen"].replace(epr_to_epic_regimen_map)
+    df["regimen"] = df["regimen"].replace(config.epr2epic_regimen_map)
 
     # rename some of the regimens
-    regimen_map = dict(epr_regimens.query("rename.notnull()")[["regimen", "rename"]].to_numpy())
+    regimen_map = dict(config.epr_regimens.query("rename.notnull()")[["regimen", "rename"]].to_numpy())
     df["regimen"] = df["regimen"].replace(regimen_map)
     return df
 
