@@ -27,6 +27,7 @@ class Model:
     """Loads ML models and pipeline parameters
 
     #TODO: support multiple models / targets
+    #TODO: convert model to ONNX format
     """
 
     def __init__(self, model_dir: str, prep_dir: str, anchor: str, name: str | None = None):

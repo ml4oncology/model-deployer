@@ -48,6 +48,11 @@ def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: st
     )
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
     feats["emergency"] = get_emergency_room_data(ed_file, anchor)
+
+    if anchor == "clinic":
+        mrns = feats["treatment"]["mrn"].unique()
+        feats["clinic"] = pd.DataFrame({"mrn": mrns, "clinic_date": data_pull_day})
+
     return feats
 
 
@@ -61,6 +66,9 @@ def get_data(
     df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
 
     # Get changes between treatment sessions
+    df["hematocrit"] = (
+        np.nan
+    )  # need to add this missing feature here. TODO: figure out a more robust way to handle this
     df = get_change_since_prev_session(df)
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
@@ -110,10 +118,10 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], data_pull_date: 
     erv = feats["emergency"]
 
     if anchor == "treatment":
-        df = trt
-        df["assessment_date"] = df["treatment_date"]
+        df = feats["treatment"]
+        df["assessment_date"] = pd.to_datetime(df["treatment_date"])
     elif anchor == "clinic":
-        df = pd.DataFrame({"mrn": trt["mrn"].unique(), "clinic_date": data_pull_date})
+        df = feats["clinic"]
         df["assessment_date"] = pd.to_datetime(df["clinic_date"])
     else:
         raise ValueError(f"Sorry, aligning features on {anchor} is not supported yet")
@@ -136,9 +144,6 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], data_pull_date: 
         parallelize=False,
     )
     df = add_engineered_features(df, "assessment_date")
-
-    # Add missing feature
-    df["hematocrit"] = np.nan
 
     return df
 
