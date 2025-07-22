@@ -66,9 +66,7 @@ def get_data(
     df = combine_features(model.prep_cfg, feats, data_pull_day, model.anchor)
 
     # Get changes between treatment sessions
-    df["hematocrit"] = (
-        np.nan
-    )  # need to add this missing feature here. TODO: figure out a more robust way to handle this
+    df["hematocrit"] = None  # need to add this missing feature here. TODO: clean this up
     df = get_change_since_prev_session(df)
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
