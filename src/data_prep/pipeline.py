@@ -64,8 +64,15 @@ def get_data(
     df = combine_features(model.prep_cfg, feats, model.anchor)
 
     # Get changes between treatment sessions
+    # NOTE: for clinic anchor, we are not keeping track of prev visits, so no changes are captured here...
+    # TODO: We should simply get the prev changes since last lab visit, symptom survey, etc. and deprecate this function
     df["hematocrit"] = None  # need to add this missing feature here. TODO: clean this up
     df = get_change_since_prev_session(df)
+
+    if model.anchor == "treatment":
+        # Only keep treatments scheduled for the next day
+        mask = df["treatment_date"] == pd.to_datetime(data_pull_day) + timedelta(days=1)
+        df = df[mask]
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
     df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=FILL_VALS[model.anchor])
@@ -94,13 +101,7 @@ def get_data(
     df = df[cols]
 
     # Transform Data: Impute, Normalize, and Clip
-    df.loc[0, df.columns[df.isna().all()]] = 0
     df = model.prep.transform_data(df, one_hot_encode=False)
-
-    if model.anchor == "treatment":
-        # Only keep treatments scheduled for the next day
-        mask = df["treatment_date"] == pd.to_datetime(data_pull_day) + timedelta(days=1)
-        df = df[mask]
 
     return df
 
