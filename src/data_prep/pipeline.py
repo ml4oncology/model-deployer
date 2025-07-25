@@ -5,7 +5,6 @@ Final processing script
 import logging
 from datetime import timedelta
 
-import numpy as np
 import pandas as pd
 from deployer.data_prep.constants import DAILY_POSTFIX_MAP, FILL_VALS, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
@@ -58,7 +57,7 @@ def get_data(
     config: Config,
     model: Model,
     feats: dict[str, pd.DataFrame],
-    data_pull_day: str,
+    data_pull_day: str | None = None,
 ) -> pd.DataFrame:
     # Combine Features
     df = combine_features(model.prep_cfg, feats, model.anchor)
@@ -70,6 +69,8 @@ def get_data(
     df = get_change_since_prev_session(df)
 
     if model.anchor == "treatment":
+        if data_pull_day is None:
+            raise ValueError("Please provide the data pull date")
         # Only keep treatments scheduled for the next day
         mask = df["treatment_date"] == pd.to_datetime(data_pull_day) + timedelta(days=1)
         df = df[mask]
@@ -92,7 +93,7 @@ def get_data(
         df = prep_symp_data(df)
 
     # Recreate any missing columns
-    missing_cols = [col for col in model.model_features if col not in df.columns]
+    missing_cols = [str(col) for col in model.model_features if col not in df.columns]
     df[missing_cols] = 0
 
     # Remove columns not used in training (keep the mrn and dates though)
@@ -128,18 +129,15 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
             df, trt, "assessment_date", time_window=cfg["trt_lookback_window"], parallelize=False
         )
 
+        if not all(trt.columns.isin(df.columns)):
+            raise ValueError(f"None of the patients had treatments within the lookback window from assessment date")
+
     df = combine_demographic_to_main_data(df, dmg, "assessment_date")
     df = merge_closest_measurements(df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window"])
     df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window"])
-    df = combine_event_to_main_data(
-        df,
-        erv,
-        "assessment_date",
-        "event_date",
-        event_name="ED_visit",
-        lookback_window=cfg["ed_visit_lookback_window"],
-        parallelize=False,
-    )
+    if not erv.empty:
+        kwargs = dict(event_name="ED_visit", lookback_window=cfg["ed_visit_lookback_window"], parallelize=False)
+        df = combine_event_to_main_data(df, erv, "assessment_date", "event_date", **kwargs)
     df = add_engineered_features(df, "assessment_date")
 
     return df

@@ -10,6 +10,7 @@ class Config:
 
     def __init__(self, info_dir: str):
         self.thresholds = pd.read_excel(f"{info_dir}/ED_Prediction_Threshold.xlsx")
+        self.thresholds.columns = self.thresholds.columns.str.lower()
 
         self.epr2epic_regimen = pd.read_excel(f"{info_dir}/A2R_EPIC_GI_regimen_map.xlsx")
         self.epr2epic_regimen_map = dict(self.epr2epic_regimen[["PROTOCOL_DISPLAY_NAME", "Mapped_Name_All"]].to_numpy())

@@ -42,11 +42,7 @@ if __name__ == "__main__":
 
     config = Config(info_dir=info_dir)
     model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Train_Data_parameters", anchor=anchor, name="ED_visit")
-
-    # Get pre-defined prediction thresholds
-    thresholds = config.thresholds
-    thresholds = thresholds.query(f'Model_anchor == "{anchor.title()}-anchored"')
-    thresholds.columns = thresholds.columns.str.lower()
+    thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
     results, inputs = [], []
