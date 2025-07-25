@@ -116,10 +116,10 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
     erv = feats["emergency"]
 
     if anchor == "treatment":
-        df = feats["treatment"]
+        df = feats["treatment"].copy()
         df["assessment_date"] = pd.to_datetime(df["treatment_date"])
     elif anchor == "clinic":
-        df = feats["clinic"]
+        df = feats["clinic"].copy()
         df["assessment_date"] = pd.to_datetime(df["clinic_date"])
     else:
         raise ValueError(f"Sorry, aligning features on {anchor} is not supported yet")
