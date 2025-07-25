@@ -28,6 +28,9 @@ def process_emergency_room_data(er: pd.DataFrame) -> pd.DataFrame:
     # i.e. ER visits occuring within 30 minutes, 80% of the entries duplicate
     er = remove_partially_duplicate_entries(er)
 
+    # remove rows with missing event date
+    er = er[er["event_date"].notna()]
+
     return er
 
 
