@@ -28,13 +28,13 @@ def get_lab_data(hema_data_file, biochem_data_file, anchor):
     return lab
 
 
-def replace_less_than(value: str) -> float:
+def replace_less_than(value: str) -> float | str:
     """Replace '<number' with number/2"""
     if isinstance(value, str) and value.startswith("<"):
         # Extract the number after '<'
         number = int(re.findall(r"\d+", value)[0])
         return number / 2
-    return float(value)
+    return value
 
 
 def process_lab_data(df):
