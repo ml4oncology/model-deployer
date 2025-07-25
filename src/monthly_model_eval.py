@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
     # Get pre-defined prediction thresholds
     thresholds = config.thresholds
-    thresholds = thresholds.query(f'Model_anchor == "{anchor.title()}-anchored"')
+    thresholds = thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
     thresholds.columns = thresholds.columns.str.lower()
 
     model_results = []

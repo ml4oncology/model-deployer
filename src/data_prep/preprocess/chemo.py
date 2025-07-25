@@ -55,8 +55,7 @@ def clean_treatment_data(df: pd.DataFrame, config: Config) -> pd.DataFrame:
         df[date_col] = pd.to_datetime(df[date_col])
 
     # clean intent feature
-    df["intent"] = df["intent"].replace("U", np.nan)
-    df["intent"] = df["intent"].str.upper()
+    df["intent"] = df["intent"].replace("U", np.nan).str.upper()
 
     df = clean_regimens(df, config)
     return df
