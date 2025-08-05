@@ -3,16 +3,19 @@ Module to generate predictions
 """
 
 import pickle
-from typing import Callable
+from typing import Callable, TypeVar
 
 import numpy as np
 import pandas as pd
 from deployer.loader import Model
+from sklearn.base import BaseEstimator
+
+ScikitModel = TypeVar("ScikitModel", bound=BaseEstimator)
 
 ANCHOR_META_COLS = {"clinic": ["mrn", "tx_sched_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
 
 
-def predict(models, data):
+def predict(data: pd.DataFrame, models: list[ScikitModel]):
     # average across the folds
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
@@ -37,7 +40,7 @@ def get_model_output(
     model_output = model_output.loc[model_input.index]
 
     # Generate prediction probabilities
-    model_output["ed_pred_prob"] = pred_fn(model.model, model_input)
+    model_output["ed_pred_prob"] = pred_fn(model_input, model.model)
 
     # Generate binary predictions based on these pre-defined thresholds
     for _, row in thresholds.iterrows():

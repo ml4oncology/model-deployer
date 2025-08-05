@@ -131,8 +131,12 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
             raise ValueError(err_msg)
 
     df = combine_demographic_to_main_data(df, dmg, "assessment_date")
-    df = merge_closest_measurements(df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window"])
-    df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window"])
+    if not sym.empty:
+        df = merge_closest_measurements(
+            df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window"]
+        )
+    if not lab.empty:
+        df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window"])
     if not erv.empty:
         df = combine_event_to_main_data(
             df,

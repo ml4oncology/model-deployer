@@ -7,7 +7,7 @@ import pandas as pd
 from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
 from deployer.loader import Config
 from make_clinical_dataset.feat_eng import get_line_of_therapy
-from make_clinical_dataset.preprocess.epr.opis import merge_same_day_treatments
+from make_clinical_dataset.preprocess.opis import merge_same_day_treatments
 
 
 def get_treatment_data(
