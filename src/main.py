@@ -35,8 +35,6 @@ if __name__ == "__main__":
     info_dir = args.info_dir
     model_dir = args.model_dir
 
-    results_output = f"{anchor}_output.csv"
-
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -45,7 +43,7 @@ if __name__ == "__main__":
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
-    results, inputs = [], []
+    inputs, outputs = [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor)
@@ -54,13 +52,13 @@ if __name__ == "__main__":
             continue
 
         data = get_data(config, model, feats, data_pull_date)
-        result = get_model_output(model, data, thresholds)
+        res = get_model_output(model, data, thresholds)
 
-        inputs.append(data)
-        results.append(result)
+        inputs.append(res["model_input"])
+        outputs.append(res["model_output"])
 
-    res = pd.concat(results, ignore_index=True, axis=0)
-    res.to_csv(f"{output_dir}/{results_output}", index=False)
+    out = pd.concat(outputs, ignore_index=True, axis=0)
+    out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
 
     inp = pd.concat(inputs, ignore_index=True, axis=0)
-    inp.to_parquet(f"{output_dir}/input_{data_pull_date}_{anchor}.parquet")
+    inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")

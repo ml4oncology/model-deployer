@@ -3,10 +3,13 @@ Module to generate predictions
 """
 
 import pickle
+from typing import Callable
 
 import numpy as np
 import pandas as pd
 from deployer.loader import Model
+
+ANCHOR_META_COLS = {"clinic": ["mrn", "tx_sched_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
 
 
 def predict(models, data):
@@ -14,34 +17,39 @@ def predict(models, data):
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
 
-def get_model_output(model: Model, df: pd.DataFrame, thresholds: pd.DataFrame) -> pd.DataFrame:
-    if model.anchor == "clinic":
-        meta_cols = ["mrn", "tx_sched_date", "clinic_date"]
-    elif model.anchor == "treatment":
-        meta_cols = ["mrn", "treatment_date"]
+def get_model_output(
+    model: Model, df: pd.DataFrame, thresholds: pd.DataFrame, pred_fn: Callable | None = None
+) -> dict[str, pd.DataFrame]:
+    """
+    TODO: set data_pull_day as the assessment date for treatment date anchor
+    """
+    if pred_fn is None:
+        pred_fn = predict
 
-    # Separate patient id and visit date information
-    result = df[meta_cols].copy()
-
-    # Reorder model features according to the order used in training
-    x = df[model.model_features]
+    model_input = df[model.model_features].copy()  # reorder model features according to the order used in training
+    meta_cols = ANCHOR_META_COLS[model.anchor]
+    model_output = df[meta_cols].copy()
 
     # Drop any row that contains NaN => to work with RF
     # NOTE: mostly when ['height', 'weight', 'body_surface_area'] is missing
     # TODO: impute them instead of dropping
-    x = x.dropna()
-    result = result[result.index.isin(x.index)]
+    model_input = model_input.dropna()
+    model_output = model_output.loc[model_input.index]
 
-    # Generate predictions and combine with the result
-    result["ed_pred_prob"] = predict(model.model, x)  # probability of the positive class
+    # Generate prediction probabilities
+    model_output["ed_pred_prob"] = pred_fn(model.model, model_input)
 
     # Generate binary predictions based on these pre-defined thresholds
     for _, row in thresholds.iterrows():
         assert row["labels"] == "ED_visit"
         alarm_rate = row["alarm_rate"]
-        result[f"ed_pred_{alarm_rate}"] = (result["ed_pred_prob"] > row["prediction_threshold"]).astype(int)
+        pred_thresh = row["prediction_threshold"]
+        model_output[f"ed_pred_alarm_{alarm_rate}"] = (model_output["ed_pred_prob"] > pred_thresh).astype(int)
 
-    return result
+    return {
+        "model_input": model_input,
+        "model_output": model_output,
+    }
 
 
 def get_symp_model_output(df: pd.DataFrame, thresholds: pd.DataFrame, model_dir: str) -> pd.DataFrame:

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pandas as pd
+import shap
 import yaml
 from ml_common.util import load_pickle
 
@@ -46,6 +47,7 @@ class Model:
         elif self.anchor == "clinic":
             self.prep = load_pickle(prep_dir, "prep_ED_visit_clinic_anchored")
             self.model = load_pickle(model_dir, "XGB_ED_visit_clinic_anchored")
+            self.orig_x = pd.read_parquet(f"{prep_dir}/X_clinic_anchored.parquet.gzip")
         self.model_features = self.model[0].feature_names_in_
 
         # column ordering needs to match
