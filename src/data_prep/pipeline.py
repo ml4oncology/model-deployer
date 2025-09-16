@@ -3,6 +3,7 @@ Final processing script
 """
 
 import logging
+import os
 from datetime import timedelta
 
 import pandas as pd
@@ -35,6 +36,9 @@ def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: st
     chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{data_pull_day}.csv"
     ed_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{data_pull_day}.csv"
     diagnosis_file = f"{data_dir}/{PROJ_NAME}_diagnosis_{postfix}{data_pull_day}.csv"
+
+    if not os.path.exists(chemo_file):
+        return {"error": f"File not found: {chemo_file}"}
 
     if pd.read_csv(chemo_file).empty or pd.read_csv(diagnosis_file).empty:
         return {"error": f"No Patient {anchor.title()} Data for: {data_pull_day}"}

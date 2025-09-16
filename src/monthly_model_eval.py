@@ -60,7 +60,7 @@ if __name__ == "__main__":
     info_dir = args.info_dir
     model_dir = args.model_dir
 
-    pred_file = f"{anchor}_output.csv"
+    pred_file = f"output_{anchor}.csv"
     perf_file = f"{anchor}_model_perf.csv"
 
     if not os.path.exists(output_dir):
