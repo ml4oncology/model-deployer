@@ -8,7 +8,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
-from make_clinical_dataset.constants import OBS_MAP
+from make_clinical_dataset.shared.constants import OBS_MAP
 
 
 def get_lab_data(hema_data_file, biochem_data_file, anchor):

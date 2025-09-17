@@ -14,16 +14,16 @@ from deployer.data_prep.preprocess.emergency import get_emergency_room_data
 from deployer.data_prep.preprocess.esas import get_symptoms_data
 from deployer.data_prep.preprocess.lab import get_lab_data
 from deployer.loader import Config, Model
-from make_clinical_dataset.combine import (
+from make_clinical_dataset.epr.combine import (
     add_engineered_features,
     combine_demographic_to_main_data,
     combine_event_to_main_data,
     combine_treatment_to_main_data,
+    merge_closest_measurements,
 )
-from ml_common.anchor import merge_closest_measurements
-from ml_common.engineer import get_change_since_prev_session
-from ml_common.prep import fill_missing_data_heuristically
-from ml_common.util import logger
+from make_clinical_dataset.epr.engineer import get_change_since_prev_session
+from make_clinical_dataset.epr.prep import fill_missing_data_heuristically
+from make_clinical_dataset.shared import logger
 
 logger.setLevel(logging.WARNING)
 

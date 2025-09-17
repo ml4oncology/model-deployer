@@ -48,4 +48,7 @@ def filter_demographic_data(df: pd.DataFrame) -> pd.DataFrame:
         df["primary_site"].str.split(",").apply(lambda items: ",".join([item.strip()[:3] for item in items]))
     )
 
+    # keep only select columns
+    df = df[["mrn", "date_of_birth", "female", "primary_site", "date_of_death", "last_contact_date"]]  # morphology
+
     return df

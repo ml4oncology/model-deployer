@@ -7,7 +7,7 @@ from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
 from deployer.loader import Config
-from make_clinical_dataset.label import get_ED_labels
+from make_clinical_dataset.epr.label import get_ED_labels
 from ml_common.eval import get_model_performance
 
 warnings.filterwarnings("ignore")
