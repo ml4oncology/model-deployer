@@ -28,7 +28,9 @@ from make_clinical_dataset.shared import logger
 logger.setLevel(logging.WARNING)
 
 
-def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: str) -> dict[str, pd.DataFrame]:
+def build_features(
+    config: Config, data_dir: str, data_pull_day: str | None = None, anchor: str = "clinic"
+) -> dict[str, pd.DataFrame]:
     postfix = DAILY_POSTFIX_MAP[anchor]
     biochem_file = f"{data_dir}/{PROJ_NAME}_biochemistry_{postfix}{data_pull_day}.csv"
     hema_file = f"{data_dir}/{PROJ_NAME}_hematology_{postfix}{data_pull_day}.csv"
@@ -42,6 +44,9 @@ def build_features(config: Config, data_dir: str, data_pull_day: str, anchor: st
 
     if pd.read_csv(chemo_file).empty or pd.read_csv(diagnosis_file).empty:
         return {"error": f"No Patient {anchor.title()} Data for: {data_pull_day}"}
+
+    if data_pull_day is not None:
+        data_pull_day = pd.to_datetime(data_pull_day)
 
     feats = {}
     feats["symptom"] = get_symptoms_data(esas_file, anchor)
@@ -85,7 +90,9 @@ def get_data(
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py
     # so easier to just calculate missingness for all columns
-    df[df.columns + "_is_missing"] = df.isnull()
+    miss_feats = df.isnull()
+    miss_feats.columns += "_is_missing"
+    df = pd.concat([df, miss_feats], axis=1)
 
     # Encode Regimens and Intent
     df = encode_regimens(df, config.gi_regimens)
@@ -121,10 +128,10 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
 
     if anchor == "treatment":
         df = feats["treatment"].copy()
-        df["assessment_date"] = pd.to_datetime(df["treatment_date"])
+        df["assessment_date"] = df["treatment_date"]
     elif anchor == "clinic":
         df = feats["clinic"].copy()
-        df["assessment_date"] = pd.to_datetime(df["clinic_date"])
+        df["assessment_date"] = df["clinic_date"]
 
         df = combine_treatment_to_main_data(
             df, trt, "assessment_date", time_window=cfg["trt_lookback_window"], parallelize=False

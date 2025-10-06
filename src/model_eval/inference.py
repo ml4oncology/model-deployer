@@ -12,7 +12,7 @@ from sklearn.base import BaseEstimator
 
 ScikitModel = TypeVar("ScikitModel", bound=BaseEstimator)
 
-ANCHOR_META_COLS = {"clinic": ["mrn", "tx_sched_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
+ANCHOR_META_COLS = {"clinic": ["mrn", "next_sched_trt_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
 
 
 def predict(data: pd.DataFrame, models: list[ScikitModel]):
