@@ -106,6 +106,9 @@ def get_data(
     # Recreate any missing columns
     missing_cols = [str(col) for col in model.model_features if col not in df.columns]
     df[missing_cols] = 0
+    for col, val in FILL_VALS[model.anchor].items():
+        if col in missing_cols:
+            df[col] = val
 
     # Remove columns not used in training (keep the mrn and dates though)
     cols = df.columns
