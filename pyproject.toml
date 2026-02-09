@@ -5,15 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "deployer"
 description = "Silent deployment of AIM2REDUCE models under EPIC"
-version = "0.2.0"
+version = "1.0.0"
 authors = [
     { name = "Muammar Kabir", email = "Muammar.kabir@uhn.ca" },
     { name = "Kevin He", email = "Kevin.He@uhn.ca" }
 ]
 dependencies = [
     "xgboost==2.0.3",
-    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v0.1.1",
-    "preduce @ git+https://github.com/ml4oncology/preduce.git@v0.1.1",
+    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v2.0.1",
     "seismometer @ git+https://github.com/epic-open-source/seismometer.git"
 ]
 
