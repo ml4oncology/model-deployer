@@ -84,7 +84,7 @@ if __name__ == "__main__":
     df["last_seen_date"] = pd.Timestamp.max
 
     # Merge ED visit dates and true labels to Model prediction file
-    ed_visit = get_emergency_room_data(ED_visits_file, anchor="")
+    ed_visit = get_emergency_room_data(ED_visits_file)
     df = get_ED_labels(df, ed_visit, lookahead_window=31)
     # filter out cases where ED visit occurred on the same day
     df = df[(df["target_ED_date"] - df["assessment_date"]).dt.days != 0]

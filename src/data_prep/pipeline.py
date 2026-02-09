@@ -53,7 +53,7 @@ def build_features(
     feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
     feats["treatment"] = get_treatment_data(chemo_file, config, data_pull_day, anchor)
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
-    feats["emergency"] = get_emergency_room_data(ed_file, anchor)
+    feats["emergency"] = get_emergency_room_data(ed_file)
 
     if anchor == "clinic":
         mrns = feats["treatment"]["mrn"].unique()
