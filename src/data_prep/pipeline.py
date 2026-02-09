@@ -49,7 +49,7 @@ def build_features(
         data_pull_day = pd.to_datetime(data_pull_day)
 
     feats = {}
-    feats["symptom"] = get_symptoms_data(esas_file, anchor)
+    feats["symptom"] = get_symptoms_data(esas_file)
     feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
     feats["treatment"] = get_treatment_data(chemo_file, config, data_pull_day, anchor)
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
