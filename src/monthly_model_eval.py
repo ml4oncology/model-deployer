@@ -9,6 +9,8 @@ from deployer.data_prep.preprocess.emergency import get_emergency_room_data
 from deployer.loader import Config
 from make_clinical_dataset.epr.label import get_ED_labels
 from ml_common.eval import get_model_performance
+from seismometer.data.performance import calculate_bin_stats, calculate_eval_ci
+from seismometer.plot.mpl.binary_classifier import evaluation
 
 warnings.filterwarnings("ignore")
 
@@ -79,15 +81,16 @@ if __name__ == "__main__":
     df = pd.read_csv(f"{output_dir}/{pred_file}", parse_dates=[date_col])
     df = df[df[date_col].between(start_date, end_date)]
     df["assessment_date"] = df[date_col]
+    df["last_seen_date"] = pd.Timestamp.max
 
     # Merge ED visit dates and true labels to Model prediction file
     ed_visit = get_emergency_room_data(ED_visits_file, anchor="")
-    df_ed_visit = get_ED_labels(df, ed_visit, lookahead_window=31)
+    df = get_ED_labels(df, ed_visit, lookahead_window=31)
     # filter out cases where ED visit occurred on the same day
-    df_ed_visit = df_ed_visit[(df_ed_visit["target_ED_date"] - df_ed_visit["assessment_date"]).dt.days != 0]
+    df = df[(df["target_ED_date"] - df["assessment_date"]).dt.days != 0]
 
     # Sort patients only with completed treatments during the month
-    df_ed_visit = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df_ed_visit, anchor)
+    df = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df, anchor)
 
     ######################  Check model Performance ###########################
 
@@ -106,7 +109,7 @@ if __name__ == "__main__":
     for _, row in thresholds.iterrows():
         assert row["labels"] == "ED_visit"
         performance_metrics = get_model_performance(
-            df_ed_visit,
+            df,
             label_col,
             pred_col,
             pred_thresh=row["prediction_threshold"],
@@ -119,11 +122,8 @@ if __name__ == "__main__":
 
     ######################  Model Performance using seismometer ###########################
 
-    from seismometer.data.performance import calculate_bin_stats, calculate_eval_ci
-    from seismometer.plot.mpl.binary_classifier import evaluation
-
-    y_true = df_ed_visit[label_col].to_numpy()
-    y_pred = df_ed_visit[pred_col].to_numpy()
+    y_true = df[label_col].to_numpy()
+    y_pred = df[pred_col].to_numpy()
 
     stats = calculate_bin_stats(y_true, y_pred)
     ci_data = calculate_eval_ci(stats, y_true, y_pred)
