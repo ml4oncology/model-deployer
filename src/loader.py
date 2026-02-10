@@ -35,8 +35,7 @@ class Model:
         self.anchor = anchor
         self.name = name
 
-        config_path = f"{Path(__file__).parent}/data_prep/config.yaml"
-        with open(config_path) as file:
+        with open(f"{prep_dir}/config.yaml") as file:
             self.prep_cfg = yaml.safe_load(file)
 
         # Emergency Department Visit

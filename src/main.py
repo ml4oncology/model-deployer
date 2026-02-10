@@ -39,7 +39,7 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
 
     config = Config(info_dir=info_dir)
-    model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Train_Data_parameters", anchor=anchor, name="ED_visit")
+    model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, name="ED_visit")
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")

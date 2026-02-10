@@ -18,6 +18,7 @@ mypy --install-types
 ├── Data            <- The daily, weekly, and monthly data pulls
 ├── Models          <- ML models
 └── Infos           <- Configuration files (regimen mapping, thresholds, etc)
+    └── Prep
 ```
 
 ## Filenames:
