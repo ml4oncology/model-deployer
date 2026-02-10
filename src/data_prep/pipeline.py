@@ -185,7 +185,7 @@ def encode_primary_sites(df, cancer_sites):
     # assign cancer sites not seen during model training as cancer_site_other
     other_sites = [site for site in cancer.columns if site not in cancer_sites]
     cancer["cancer_site_other"] = cancer[other_sites].any(axis=1).astype(int)
-    cancer.drop(columns=other_sites)
+    cancer = cancer.drop(columns=other_sites)
 
     df = df.join(cancer)
     return df

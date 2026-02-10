@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pandas as pd
-import shap
 import yaml
 from ml_common.util import load_pickle
 
