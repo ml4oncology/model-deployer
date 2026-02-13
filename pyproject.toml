@@ -13,7 +13,9 @@ authors = [
 dependencies = [
     "xgboost==2.0.3",
     "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v2.0.1",
-    "seismometer @ git+https://github.com/epic-open-source/seismometer.git"
+    "openpyxl",
+    "scikit-learn==1.3.2",
+    "seismometer @ git+https://github.com/epic-open-source/seismometer.git",
 ]
 
 [project.optional-dependencies]
