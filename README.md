@@ -12,6 +12,12 @@ pre-commit install
 mypy --install-types
 ```
 
+# Example Usage
+```bash
+python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
+python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804
+```
+
 # Project Organization
 ```
 ├── src             <- The source code
