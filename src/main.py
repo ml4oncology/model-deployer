@@ -52,7 +52,7 @@ if __name__ == "__main__":
             continue
 
         data = get_data(config, model, feats, data_pull_date)
-        res = get_model_output(model, data, thresholds)
+        res = get_model_output(model, data, thresholds, pred_fn=None, output_dir=output_dir)
 
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
