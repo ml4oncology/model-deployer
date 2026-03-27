@@ -2,28 +2,29 @@
 Module to generate predictions
 """
 
-import matplotlib  # NEW
-matplotlib.use('Agg')  # NEW — non-interactive backend, matches ml4u backend
+import matplotlib  
+matplotlib.use('Agg')  
 
 import pickle
-from functools import partial  # NEW
-from pathlib import Path  # NEW
+from functools import partial 
+from pathlib import Path  
 from typing import Callable, TypeVar
 
-import matplotlib.pyplot as plt  # NEW
+import matplotlib.pyplot as plt  
 import numpy as np
 import pandas as pd
-import shap  # NEW
+import shap  
 from deployer.loader import Model
-from make_clinical_dataset.shared.constants import UNIT_MAP  # NEW
+from make_clinical_dataset.shared.constants import UNIT_MAP  
+from ml_common.constants import CANCER_CODE_MAP
 from sklearn.base import BaseEstimator
-
-from deployer.model_eval.util import clean_feature_name  # NEW — copy util.py into this repo
+from dateutil.relativedelta import relativedelta
+from deployer.model_eval.util import clean_feature_name  
 
 ScikitModel = TypeVar("ScikitModel", bound=BaseEstimator)
 
 ANCHOR_META_COLS = {"clinic": ["mrn", "next_sched_trt_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
-SHAP_SUBDIR = "shap_waterfall"  # NEW — subdirectory name inside output_dir
+SHAP_SUBDIR = "shap_waterfall"  
 
 
 def predict(data: pd.DataFrame, models: list[ScikitModel]):
@@ -31,7 +32,6 @@ def predict(data: pd.DataFrame, models: list[ScikitModel]):
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
 
-# NEW — helper function, mirrors shap_plot() in ml4u backend main.py
 def _save_shap_waterfall(
     model: Model,
     model_input: pd.DataFrame,
@@ -55,7 +55,7 @@ def _save_shap_waterfall(
     input_row[norm_cols] = model.prep.scaler.inverse_transform(input_row[norm_cols])
     input_data = input_row.iloc[0].tolist()
 
-    # Step 3: Clean feature names + add units (from ml4u backend shap_plot)
+    # Step 3: Clean feature names + add units 
     unit_map = {feat: unit for unit, feats in UNIT_MAP.items() for feat in feats}
     feature_names = []
     for feat in shap_values.feature_names:
@@ -65,7 +65,6 @@ def _save_shap_waterfall(
         feature_names.append(res)
 
     # Step 4: Rebuild shap.Explanation with cleaned names + unnormalized data
-    # (mirrors component.py frontend reconstruction)
     explanation = shap.Explanation(
         values=shap_values.values[0],
         base_values=float(shap_values.base_values[0]),
@@ -85,13 +84,26 @@ def _save_shap_waterfall(
     plt.close()
     plt.close('all')
 
+def _compute_demographic_info(df_demographic: pd.DataFrame, 
+                              df_model_output: pd.DataFrame) -> pd.DataFrame:
+    
+    df_model_output = df_model_output.merge(df_demographic, how="left", on=["mrn"])
+    df_model_output["age"] = df_model_output.apply(
+        lambda row: relativedelta(row['clinic_date'], row['date_of_birth']).years,
+        axis=1
+    )
+    df_model_output["gender"] = df_model_output["female"].astype(int).map({1: "Female", 0: "Male"})
+    df_model_output["cancer"] = df_model_output["primary_site"].map(CANCER_CODE_MAP).fillna("Other").str.split(" ").str[0]
+
+    return df_model_output[['mrn', 'clinic_date', 'age', 'gender', 'cancer']].copy()
 
 def get_model_output(
     model: Model,
     df: pd.DataFrame,
+    demographic_info: pd.DataFrame, 
     thresholds: pd.DataFrame,
     pred_fn: Callable | None = None,
-    output_dir: str | Path | None = None,  # NEW
+    output_dir: str | Path | None = None,  
 ) -> dict[str, pd.DataFrame]:
     """
     TODO: set data_pull_day as the assessment date for treatment date anchor
@@ -102,7 +114,7 @@ def get_model_output(
     model_input = df[model.model_features].copy() # reorder model features according to the order used in training
     meta_cols = ANCHOR_META_COLS[model.anchor]
     model_output = df[meta_cols].copy()
-
+ 
     # Drop any row that contains NaN => to work with RF
     # NOTE: mostly when ['height', 'weight', 'body_surface_area'] is missing
     # TODO: impute them instead of dropping
@@ -113,6 +125,9 @@ def get_model_output(
     # Generate prediction probabilities
     model_output["ed_pred_prob"] = pred_fn(model_input, model.model)
 
+    # Compute demographic info
+    demog_df = _compute_demographic_info(demographic_info, model_output)
+
     # Generate binary predictions based on these pre-defined thresholds
     for _, row in thresholds.iterrows():
         assert row["labels"] == "ED_visit"
@@ -120,7 +135,7 @@ def get_model_output(
         pred_thresh = row["prediction_threshold"]
         model_output[f"ed_pred_alarm_{alarm_rate}"] = (model_output["ed_pred_prob"] > pred_thresh).astype(int)
 
-    # NEW — compute and save SHAP waterfall plots if output_dir is provided
+    # Compute and save SHAP waterfall plots if output_dir is provided
     if output_dir is not None:
         shap_dir = Path(output_dir) / SHAP_SUBDIR
         shap_dir.mkdir(parents=True, exist_ok=True)
@@ -143,6 +158,7 @@ def get_model_output(
     return {
         "model_input": model_input,
         "model_output": model_output,
+        "demographic_info": demog_df
     }
 
 

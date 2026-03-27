@@ -6,6 +6,7 @@ import pandas as pd
 from deployer.data_prep.pipeline import build_features, get_data
 from deployer.loader import Config, Model
 from deployer.model_eval.inference import get_model_output
+from deployer.dashboard.risk_dist_plot import risk_dist_plot
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -43,22 +44,26 @@ if __name__ == "__main__":
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
-    inputs, outputs = [], []
+    inputs, outputs, meta_data = [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor)
+        
         if "error" in feats:
             print(feats["error"])
             continue
 
         data = get_data(config, model, feats, data_pull_date)
-        res = get_model_output(model, data, thresholds, pred_fn=None, output_dir=output_dir)
+        res = get_model_output(model, data, feats['demographic'], thresholds, pred_fn=None, output_dir=output_dir)
 
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
+        meta_data.append(res["demographic_info"])
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
 
     inp = pd.concat(inputs, ignore_index=True, axis=0)
     inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")
+
+    meta = pd.concat(meta_data, ignore_index=True, axis=0)
