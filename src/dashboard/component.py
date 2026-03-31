@@ -1,3 +1,5 @@
+import math
+
 def create_patient_overview(mrn, next_sched_trt, cancer, age, gender, risk_score, risk_level):
     """Create a patient info card"""
 
@@ -89,23 +91,23 @@ def create_model_overview():
                 <div class="model-info-value">0.73</div>
             </div>
         </div>
-        <div class="model-card-toggle">
-            <input type="checkbox" id="show-hyper" style="display:none;">
-            <label for="show-hyper">Show Hyperparameters</label>
-            <div class="model-card-hyper">
-                <ul>
-                    <li>n_estimators: 64</li>
-                    <li>max_depth: 6</li>
-                    <li>learning_rate: 0.3</li>
-                    <li>min_split_loss: 0.5</li>
-                    <li>min_child_weight: 21</li>
-                    <li>reg_lambda: 1.0</li>
-                    <li>reg_alpha: 30</li>
-                </ul>
-            </div>
-        </div>
     </div>
     """
+    # <div class="model-card-toggle">
+        #     <input type="checkbox" id="show-hyper" style="display:none;">
+        #     <label for="show-hyper">Show Hyperparameters</label>
+        #     <div class="model-card-hyper">
+        #         <ul>
+        #             <li>n_estimators: 64</li>
+        #             <li>max_depth: 6</li>
+        #             <li>learning_rate: 0.3</li>
+        #             <li>min_split_loss: 0.5</li>
+        #             <li>min_child_weight: 21</li>
+        #             <li>reg_lambda: 1.0</li>
+        #             <li>reg_alpha: 30</li>
+        #         </ul>
+        #     </div>
+        # </div>
     return html_content
 
 
@@ -116,7 +118,17 @@ def create_percentile_overview(p_all, p_same, cancer):
         return {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
 
     all_suffix = get_suffix(p_all)
-    same_suffix = get_suffix(p_same)
+
+    same_section = ""
+    if not (isinstance(p_same, float) and math.isnan(p_same)):
+        same_suffix = get_suffix(p_same)
+        same_section = f"""
+        <div class="percentile-info-section">
+            <div class="patient-info-label">Risk Percentile - Same Diagnosis</div>
+            <div class="percentile-info-value">{p_same}{same_suffix}</div>
+            <div class="patient-info-label">Higher risk than {p_same}% of patients with {cancer.lower()} cancer</div>
+        </div>"""
+
     return f"""
     <div class="percentile-info-grid">
         <div class="percentile-info-section">
@@ -124,10 +136,6 @@ def create_percentile_overview(p_all, p_same, cancer):
             <div class="percentile-info-value">{p_all}{all_suffix}</div>
             <div class="patient-info-label">Higher risk than {p_all}% of all patients</div>
         </div>
-        <div class="percentile-info-section">
-            <div class="patient-info-label">Risk Percentile - Same Diagnosis</div>
-            <div class="percentile-info-value">{p_same}{same_suffix}</div>
-            <div class="patient-info-label">Higher risk than {p_same}% of patients with {cancer.lower()} cancer</div>
-        </div>
+        {same_section}
     </div>
     """

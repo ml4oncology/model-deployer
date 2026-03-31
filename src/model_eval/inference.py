@@ -21,6 +21,11 @@ from sklearn.base import BaseEstimator
 from dateutil.relativedelta import relativedelta
 from deployer.model_eval.util import clean_feature_name  
 
+import textwrap
+
+def wrap_label(label, width=25):
+    return "\n".join(textwrap.wrap(label, width=width))
+
 ScikitModel = TypeVar("ScikitModel", bound=BaseEstimator)
 
 ANCHOR_META_COLS = {"clinic": ["mrn", "next_sched_trt_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
@@ -31,6 +36,52 @@ def predict(data: pd.DataFrame, models: list[ScikitModel]):
     # average across the folds
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
+def _fix_waterfall_labels(fig: plt.Figure, min_bar_width: float = 0.2) -> None:
+    for ax in fig.axes:
+        patches = [p for p in ax.patches if hasattr(p, "get_width")]
+        texts = [t for t in ax.texts if t.get_text().lstrip("−-+").replace(".", "").isdigit()]
+
+        if not patches or not texts:
+            continue
+
+        x_min, x_max = ax.get_xlim()
+        axis_range = x_max - x_min
+
+        for patch, text in zip(patches, texts):
+            bar_width = abs(patch.get_width())
+
+            if bar_width / axis_range < min_bar_width:
+
+                # read true tip from patch geometry
+                is_positive = patch.get_width() >= 0
+
+                # Get all vertices of the arrow patch and find the extreme x point
+                verts = patch.get_path().vertices  # shape (N, 2) in axes coordinates
+                transform = patch.get_transform()
+                verts_display = transform.transform(verts)  # convert to display coords
+                ax_transform = ax.transData.inverted()
+                verts_data = ax_transform.transform(verts_display)  # back to data coords
+
+                if is_positive:
+                    bar_tip = verts_data[:, 0].max()  # rightmost point = arrow tip
+                else:
+                    bar_tip = verts_data[:, 0].min()  # leftmost point = arrow tip
+
+                nudge = axis_range * 0.0001
+                new_x = bar_tip + nudge if is_positive else bar_tip - nudge
+                ha = "left" if is_positive else "right"
+
+                text.set_x(new_x)
+                text.set_ha(ha)
+                text.set_clip_on(False)
+
+                # Use edgecolor instead of facecolor — SHAP bars have alpha=0 face
+                edge = patch.get_edgecolor()
+                if edge[3] > 0:  # edge is visible
+                    text.set_color(edge)
+                else:
+                    # Fall back: red for positive bars, blue for negative
+                    text.set_color("#ff0051" if patch.get_width() >= 0 else "#008bfb")
 
 def _save_shap_waterfall(
     model: Model,
@@ -44,7 +95,6 @@ def _save_shap_waterfall(
 ) -> None:
     """
     Compute and save a SHAP waterfall plot for a single model input row.
-    Mirrors the logic in ml4u backend shap_plot() + ml4u frontend component.py.
     """
     # Step 1: Extract the single row and compute SHAP values
     input_row = model_input.iloc[[row_idx]].astype(float)
@@ -62,6 +112,7 @@ def _save_shap_waterfall(
         res = clean_feature_name(feat)
         if feat in unit_map:
             res = f"{res} ({unit_map[feat]})"
+        res = wrap_label(res, width=30)
         feature_names.append(res)
 
     # Step 4: Rebuild shap.Explanation with cleaned names + unnormalized data
@@ -76,6 +127,9 @@ def _save_shap_waterfall(
     fig, ax = plt.subplots(figsize=(12, 10))
     shap.plots.waterfall(explanation, max_display=max_display, show=False)
     plt.tight_layout(pad=0.5)
+
+    # --- Fix clipped labels: move text outside narrow bars ---
+    _fix_waterfall_labels(plt.gcf())
 
     clinic_date_str = pd.Timestamp(clinic_date).strftime('%Y%m%d')
     filename = shap_dir / f"shap_mrn_{mrn}_clinic_{clinic_date_str}.png"
@@ -141,8 +195,8 @@ def get_model_output(
         shap_dir.mkdir(parents=True, exist_ok=True)
 
         pred_fn_for_shap = partial(predict, models=model.model)
-        bg_data = model.orig_x.sample(min(10000, len(model.orig_x))).astype(float)
-        explainer = shap.Explainer(pred_fn_for_shap, bg_data)
+        bg_data = model.orig_x.sample(min(10000, len(model.orig_x)), random_state=42).astype(float)
+        explainer = shap.Explainer(pred_fn_for_shap, bg_data, seed=42)
 
         for row_idx, (idx, row) in enumerate(model_output.iterrows()):
             _save_shap_waterfall(

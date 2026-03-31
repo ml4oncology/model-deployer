@@ -8,12 +8,14 @@ description = "Silent deployment of AIM2REDUCE models under EPIC"
 version = "1.0.0"
 authors = [
     { name = "Muammar Kabir", email = "Muammar.kabir@uhn.ca" },
-    { name = "Kevin He", email = "Kevin.He@uhn.ca" }
+    { name = "Kevin He", email = "Kevin.He@uhn.ca" },
+    { name = "Wayne Uy", email = "WayneIsaac.Uy@uhn.ca" }
 ]
 dependencies = [
     "xgboost==2.0.3",
     "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v2.0.1",
-    "seismometer @ git+https://github.com/epic-open-source/seismometer.git"
+    "seismometer @ git+https://github.com/epic-open-source/seismometer.git",
+    "playwright"
 ]
 
 [project.optional-dependencies]

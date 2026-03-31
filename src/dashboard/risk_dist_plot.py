@@ -86,7 +86,7 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame):
     percentile_same = (
         int(round(np.mean(np.array(same_cancer_data) < x) * 100))
         if len(same_cancer_data) >= MIN_SAME_CANCER
-        else percentile_all  # fallback: use all-patients percentile
+        else np.nan  # fallback: use all-patients percentile
     )
 
     return percentile_all, percentile_same, fig
