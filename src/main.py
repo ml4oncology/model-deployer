@@ -6,7 +6,7 @@ import pandas as pd
 from deployer.data_prep.pipeline import build_features, get_data
 from deployer.loader import Config, Model
 from deployer.model_eval.inference import get_model_output
-from deployer.dashboard.risk_dist_plot import risk_dist_plot
+from deployer.dashboard.generate_dashboard_per_patient import save_dashboard_png
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -67,3 +67,6 @@ if __name__ == "__main__":
     inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")
 
     meta = pd.concat(meta_data, ignore_index=True, axis=0)
+
+    # Generate dashboard per patient
+    save_dashboard_png(out, meta, output_dir)

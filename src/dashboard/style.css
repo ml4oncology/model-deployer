@@ -1,0 +1,181 @@
+/* Limit main content width and center it */
+div[data-testid="stAppViewContainer"] {
+    max-width: 1600px;   /* adjust as needed */
+    margin: 0 auto;      /* center content horizontally */
+}
+
+/* Thin line at top of page */
+div[data-testid="stDecoration"] {
+    background-image: linear-gradient(90deg, rgb(255, 75, 75), rgb(255, 255, 125));
+    height: 0.125rem;
+}
+.title {
+    font-size: 2.2rem;
+    font-weight: 600;
+    color: #1f2c3e;
+    margin-bottom: 0.25rem;
+}
+.subtitle {
+    font-size: 1.1rem;
+    color: #6c7a89;
+    margin-bottom: 2rem;
+}
+.overview-container {
+    background: rgba(255, 255, 255, 0.7);
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    border: 1px solid #e0e0e0;
+    margin-bottom: 1.5rem;
+}
+
+.overview-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+    font-weight: bold;
+    font-size: 20px;
+    color: #222;
+    font-family: "Helvetica Neue";
+}
+
+.patient-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+    gap: 30px;
+    align-items: end;
+}
+.model-info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+}
+.percentile-info-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    margin-top: 75px;
+}
+
+.patient-info-section {
+    display: flex;
+    flex-direction: column;
+}
+.model-info-section {
+    display: flex;
+    align-items: baseline;
+}
+.percentile-info-section {
+    background-color: rgb(240, 242, 246);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.patient-info-label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 5px;
+    font-weight: normal;
+}
+.model-info-label {
+    font-weight: 500;
+    color: #666;
+    min-width: 160px;
+    margin-right: 10px;
+    font-size: 15px;
+}
+
+.patient-info-value {
+    font-size: 18px;
+    color: #333;
+}
+.model-info-value {
+    font-size: 16px;
+}
+.percentile-info-value {
+    font-size: 32px;
+    font-weight: bold;
+}
+
+.risk-score-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.risk-score {
+    font-size: 20px;
+    font-weight: bold;
+    color: #333;
+}
+
+.risk-badge {
+    background-color: #ff4444;
+    color: white;
+    padding: 0px 10px;
+    border-radius: 5px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.risk-icon {
+    font-size: 14px;
+}
+
+.model-card-toggle {
+    margin-top: 10px;
+}
+.model-card-hyper {
+    display: none;
+    background: rgb(240, 242, 246);
+    border-radius: 8px;
+    padding: 10px 10px;
+}
+.model-card-hyper ul {
+    margin-bottom: 0px;
+}
+input[type=checkbox]:checked ~ .model-card-hyper {
+    display: block;
+}
+.model-card-toggle label {
+    color: #0072e6;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+@media (max-width: 1024px) {
+    .model-info-grid {
+        grid-template-columns: 1fr;
+        row-gap: 16px;
+    }
+    .model-info-section {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    .model-info-label {
+        margin-bottom: 2px;
+        margin-right: 0;
+        font-size: 14px;
+    }
+    .model-info-value {
+        font-size: 15px;
+    }
+}
+
+@media (max-width: 768px) {
+    .patient-info-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    .percentile-info-grid {
+        margin-top: 0px;
+    }
+}
+
+@media (max-width: 480px) {
+    .patient-info-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+}

@@ -37,14 +37,21 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame):
     main_cancer = main["cancer"].iloc[0]
     same_cancer = other["cancer"] == main_cancer
 
-    hist_data = [list(other[pred_col]), list(other.loc[same_cancer, pred_col])]
-    group_labels = [
-        f"All patients<br>N={len(other)}",
-        f"{main_cancer} cancer patients<br>N={sum(same_cancer)}",
-    ]
+    MIN_SAME_CANCER = 3  # minimum samples needed to plot same-cancer KDE
 
-    # Build distribution plot (same styling as ml4u backend)
-    colors = ["#374151", "#2dd4bf"]
+    same_cancer_data = list(other.loc[same_cancer, pred_col])
+    if len(same_cancer_data) >= MIN_SAME_CANCER:
+        hist_data = [list(other[pred_col]), same_cancer_data]
+        group_labels = [
+            f"All patients<br>N={len(other)}",
+            f"{main_cancer} cancer patients<br>N={sum(same_cancer)}",
+        ]
+        colors = ["#374151", "#2dd4bf"]
+    else:
+        hist_data = [list(other[pred_col])]
+        group_labels = [f"All patients<br>N={len(other)}"]
+        colors = ["#374151"]
+
     fig = ff.create_distplot(hist_data, group_labels, show_rug=False, show_hist=False, colors=colors)
     fig.update_traces(fill="tozeroy")
 
@@ -74,7 +81,12 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame):
         hovermode=False,
     )
 
+    # Percentile: same-cancer percentile falls back to all-patients when insufficient data
     percentile_all = int(round(np.mean(np.array(hist_data[0]) < x) * 100))
-    percentile_same = int(round(np.mean(np.array(hist_data[1]) < x) * 100))
+    percentile_same = (
+        int(round(np.mean(np.array(same_cancer_data) < x) * 100))
+        if len(same_cancer_data) >= MIN_SAME_CANCER
+        else percentile_all  # fallback: use all-patients percentile
+    )
 
     return percentile_all, percentile_same, fig
