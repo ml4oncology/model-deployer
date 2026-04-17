@@ -57,13 +57,13 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
 
     # Mark target patient's risk score
     x = main[pred_col].iloc[-1]
-    kwargs = dict(type="line", line=dict(color="gray", width=2, dash="dot"))
+    kwargs = dict(type="line", line=dict(color="black", width=2, dash="dot"))
     fig.add_shape(
         x0=x, x1=x,
         yref="paper", y0=0, y1=1,
         label=dict(
             text=f"Patient risk score = {x:.3f}",
-            font=dict(size=12 * font_scale, color="gray"),
+            font=dict(size=12 * font_scale, color="black"),
         ),
         **kwargs,
     )
