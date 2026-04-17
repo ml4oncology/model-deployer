@@ -22,6 +22,7 @@ from dateutil.relativedelta import relativedelta
 from deployer.model_eval.util import clean_feature_name  
 
 import textwrap
+import re
 
 def wrap_label(label, width=25):
     return "\n".join(textwrap.wrap(label, width=width))
@@ -83,6 +84,48 @@ def _fix_waterfall_labels(fig: plt.Figure, min_bar_width: float = 0.2) -> None:
                     # Fall back: red for positive bars, blue for negative
                     text.set_color("#ff0051" if patch.get_width() >= 0 else "#008bfb")
 
+
+def _rename_waterfall_annotations(fig: plt.Figure) -> None:
+    replacements = [
+        (re.compile(r"^\$?E\[f\(X\)\]\$?\s*=\s*"), "Average ED Visit Risk = "),
+        (re.compile(r"^\$?f\(x\)\$?\s*=\s*"), "Patient's Predicted ED Visit Risk = "),
+    ]
+    standalone_replacements = {
+        "$E[f(X)]$": "Average ED Visit Risk",
+        "E[f(X)]": "Average ED Visit Risk",
+        "$f(x)$": "Patient's Predicted ED Visit Risk",
+        "f(x)": "Patient's Predicted ED Visit Risk",
+    }
+
+    for ax in fig.axes:
+        for text in ax.texts:
+            label = text.get_text().strip()
+            if label in standalone_replacements:
+                text.set_text(standalone_replacements[label])
+                continue
+
+            for pattern, replacement in replacements:
+                if pattern.match(label):
+                    text.set_text(pattern.sub(replacement, label))
+                    break
+
+
+def _add_waterfall_annotation_legend(fig: plt.Figure) -> None:
+    legend_text = (
+        "Legend: f(x) = Patient's Predicted ED Visit Risk; "
+        "E[f(X)] = Average ED Visit Risk"
+    )
+    fig.text(
+        0.02,
+        0.015,
+        legend_text,
+        ha="left",
+        va="bottom",
+        fontsize=11,
+        color="#444",
+        bbox=dict(boxstyle="round,pad=0.35", facecolor="#f5f5f5", edgecolor="#d9d9d9"),
+    )
+
 def _save_shap_waterfall(
     model: Model,
     model_input: pd.DataFrame,
@@ -129,7 +172,11 @@ def _save_shap_waterfall(
     plt.tight_layout(pad=0.5)
 
     # --- Fix clipped labels: move text outside narrow bars ---
-    _fix_waterfall_labels(plt.gcf())
+    fig = plt.gcf()
+    _fix_waterfall_labels(fig)
+    _rename_waterfall_annotations(fig)
+    fig.subplots_adjust(bottom=0.12)
+    _add_waterfall_annotation_legend(fig)
 
     clinic_date_str = pd.Timestamp(clinic_date).strftime('%Y%m%d')
     filename = shap_dir / f"shap_mrn_{mrn}_clinic_{clinic_date_str}.png"

@@ -1,3 +1,54 @@
+.dashboard-page {
+    --clinician-label-font-size: calc(14px * var(--dashboard-font-scale));
+    --clinician-value-font-size: calc(18px * var(--dashboard-font-scale));
+    --clinician-risk-score-font-size: calc(20px * var(--dashboard-font-scale));
+    --clinician-percentile-font-size: calc(32px * var(--dashboard-font-scale));
+    --clinician-section-title-font-size: calc(18px * var(--dashboard-font-scale));
+    --clinician-risk-badge-font-size: calc(14px * var(--dashboard-font-scale));
+    background: #f5f5f5;
+    padding: 24px;
+    font-family: "Helvetica Neue", sans-serif;
+}
+
+.dashboard-content {
+    width: 100%;
+}
+
+.dashboard-section {
+    display: grid;
+    margin-bottom: 24px;
+}
+
+.dashboard-layout-portrait .dashboard-section--risk,
+.dashboard-layout-portrait .dashboard-section--bottom {
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+.dashboard-layout-portrait {
+    padding: 12px;
+}
+
+.dashboard-layout-portrait .percentile-info-grid {
+    margin-top: 0;
+}
+
+.dashboard-layout-landscape .dashboard-section--risk {
+    grid-template-columns: 4fr 1fr;
+    gap: 16px;
+}
+
+.dashboard-layout-landscape .dashboard-section--bottom {
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+
+.section-title {
+    font-size: var(--clinician-section-title-font-size);
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
 /* Limit main content width and center it */
 div[data-testid="stAppViewContainer"] {
     max-width: 1600px;   /* adjust as needed */
@@ -71,7 +122,7 @@ div[data-testid="stDecoration"] {
 }
 
 .patient-info-label {
-    font-size: 14px;
+    font-size: var(--clinician-label-font-size);
     color: #666;
     margin-bottom: 5px;
     font-weight: normal;
@@ -85,14 +136,14 @@ div[data-testid="stDecoration"] {
 }
 
 .patient-info-value {
-    font-size: 18px;
+    font-size: var(--clinician-value-font-size);
     color: #333;
 }
 .model-info-value {
     font-size: 16px;
 }
 .percentile-info-value {
-    font-size: 32px;
+    font-size: var(--clinician-percentile-font-size);
     font-weight: bold;
 }
 
@@ -103,7 +154,7 @@ div[data-testid="stDecoration"] {
 }
 
 .risk-score {
-    font-size: 20px;
+    font-size: var(--clinician-risk-score-font-size);
     font-weight: bold;
     color: #333;
 }
@@ -113,14 +164,14 @@ div[data-testid="stDecoration"] {
     color: white;
     padding: 0px 10px;
     border-radius: 5px;
-    font-size: 14px;
+    font-size: var(--clinician-risk-badge-font-size);
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
 .risk-icon {
-    font-size: 14px;
+    font-size: var(--clinician-risk-badge-font-size);
 }
 
 .model-card-toggle {
@@ -168,6 +219,13 @@ input[type=checkbox]:checked ~ .model-card-hyper {
         grid-template-columns: 1fr 1fr;
         gap: 20px;
     }
+
+    .dashboard-section--risk,
+    .dashboard-section--bottom {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
     .percentile-info-grid {
         margin-top: 0px;
     }

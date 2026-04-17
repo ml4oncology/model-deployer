@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import plotly.figure_factory as ff
 
-def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame):
+def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, font_scale: float = 1.0):
     """
     Compute risk score distribution plot and percentile ranks for a given patient.
 
@@ -61,25 +61,34 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame):
     fig.add_shape(
         x0=x, x1=x,
         yref="paper", y0=0, y1=1,
-        label=dict(text=f"Patient risk score = {x:.3f}", font=dict(size=12, color="gray")),
+        label=dict(
+            text=f"Patient risk score = {x:.3f}",
+            font=dict(size=12 * font_scale, color="gray"),
+        ),
         **kwargs,
     )
 
     title = dict(
         text="Risk Score Comparison",
-        font=dict(size=20, color="#222", family="Helvetica Neue"),
+        font=dict(size=20 * font_scale, color="#222", family="Helvetica Neue"),
         x=0.01,
         xanchor="left",
-        subtitle=dict(text="Risk percentile rank among the other patients assessed in the past month"),
+        subtitle=dict(
+            text="Risk percentile rank among the other patients assessed in the past month",
+            font=dict(size=14 * font_scale),
+        ),
     )
     fig.update_layout(
         title=title,
-        legend=dict(xanchor="right"),
+        legend=dict(xanchor="right", font=dict(size=13 * font_scale)),
         xaxis_title="Probability of Patients Ending up in ED",
         yaxis_title="Density of Patients",
         template="plotly_white",
         hovermode=False,
+        font=dict(size=13 * font_scale),
     )
+    fig.update_xaxes(title_font=dict(size=15 * font_scale), tickfont=dict(size=12 * font_scale))
+    fig.update_yaxes(title_font=dict(size=15 * font_scale), tickfont=dict(size=12 * font_scale))
 
     # Percentile: same-cancer percentile falls back to all-patients when insufficient data
     percentile_all = int(round(np.mean(np.array(hist_data[0]) < x) * 100))

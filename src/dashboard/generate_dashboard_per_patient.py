@@ -15,6 +15,8 @@ from deployer.dashboard.risk_dist_plot import risk_dist_plot
 
 DASHBOARD_SUBDIR = "dashboards"
 SHAP_SUBDIR = "shap_waterfall"
+SUPPORTED_LAYOUTS = {"portrait", "landscape"}
+DEFAULT_FONT_SCALE = 1.0
 
 CSS_PATH = Path(__file__).parent / "style.css"
 
@@ -27,6 +29,8 @@ def _build_dashboard_html(
     df_output: pd.DataFrame,
     df_meta: pd.DataFrame,
     shap_png_path: Path,
+    layout: str,
+    font_scale: float,
 ) -> str:
     """Assemble the full dashboard HTML for one patient/clinic_date row."""
 
@@ -43,7 +47,7 @@ def _build_dashboard_html(
     )
 
     # --- Risk distribution plot ---
-    percentile_all, percentile_same, fig = risk_dist_plot(mrn, df_output, df_meta)
+    percentile_all, percentile_same, fig = risk_dist_plot(mrn, df_output, df_meta, font_scale=font_scale)
     risk_dist_html = pio.to_html(fig, full_html=False, include_plotlyjs="cdn")
     percentile_html = create_percentile_overview(percentile_all, percentile_same, meta_row["cancer"])
 
@@ -67,26 +71,29 @@ def _build_dashboard_html(
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard MRN {mrn} — {str(clinic_date)[:10]}</title>
+  <style>:root {{ --dashboard-font-scale: {font_scale}; }}</style>
   <style>{css}</style>
 </head>
-<body style="background:#f5f5f5; padding:24px; font-family: 'Helvetica Neue', sans-serif;">
+<body class="dashboard-page dashboard-layout-{layout}">
 
   <!-- Patient card -->
-  {patient_html}
+  <div class="dashboard-content">
+    {patient_html}
 
-  <!-- Risk distribution row: plot (4 cols) + percentile panel (1 col) -->
-  <div style="display:grid; grid-template-columns:4fr 1fr; gap:16px; margin-bottom:24px;">
-    <div>{risk_dist_html}</div>
-    <div>{percentile_html}</div>
-  </div>
-
-  <!-- SHAP + model card row -->
-  <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:24px;">
-    <div>
-      <div style="font-size:18px; font-weight:600; margin-bottom:12px;">Feature Contribution</div>
-      {shap_img_tag}
+    <!-- Risk distribution row: plot (4 cols) + percentile panel (1 col) -->
+    <div class="dashboard-section dashboard-section--risk">
+      <div>{risk_dist_html}</div>
+      <div>{percentile_html}</div>
     </div>
-    <div>{model_html}</div>
+
+    <!-- SHAP + model card row -->
+    <div class="dashboard-section dashboard-section--bottom">
+      <div>
+        <div class="section-title">Feature Contribution</div>
+        {shap_img_tag}
+      </div>
+      <div>{model_html}</div>
+    </div>
   </div>
 
 </body>
@@ -98,6 +105,8 @@ def save_dashboard_png(
     df_output: pd.DataFrame,
     df_meta: pd.DataFrame,
     output_dir: str | Path,
+    layout: str = "portrait",
+    font_scale: float = DEFAULT_FONT_SCALE,
 ) -> None:
     """
     Loop over every row in df_output, assemble the dashboard HTML,
@@ -109,7 +118,15 @@ def save_dashboard_png(
                    ed_pred_prob, ed_pred_alarm_0.1
         df_meta:   DataFrame with columns: mrn, clinic_date, age, gender, cancer
         output_dir: Root output directory (same one passed to get_model_output).
+        layout: Dashboard layout style. Supported values are "portrait" and "landscape".
+        font_scale: Multiplier applied to clinician-facing dashboard text.
     """
+    if layout not in SUPPORTED_LAYOUTS:
+        supported = ", ".join(sorted(SUPPORTED_LAYOUTS))
+        raise ValueError(f"Unsupported layout '{layout}'. Expected one of: {supported}")
+    if font_scale <= 0:
+        raise ValueError("font_scale must be greater than 0")
+
     output_dir = Path(output_dir)
     dashboard_dir = output_dir / DASHBOARD_SUBDIR
     shap_dir = output_dir / SHAP_SUBDIR
@@ -117,10 +134,11 @@ def save_dashboard_png(
 
     # Index df_meta by (mrn, clinic_date) for fast lookup
     meta_indexed = df_meta.set_index(["mrn", "clinic_date"])
+    viewport = {"width": 1280, "height": 1600} if layout == "portrait" else {"width": 1600, "height": 900}
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width": 1600, "height": 900})
+        page = browser.new_page(viewport=viewport)
 
         df_meta["clinic_date"] = pd.to_datetime(df_meta["clinic_date"])
 
@@ -153,6 +171,8 @@ def save_dashboard_png(
                 df_output=df_output,
                 df_meta=df_meta,
                 shap_png_path=shap_png_path,
+                layout=layout,
+                font_scale=font_scale,
             )
 
             page.set_content(html, wait_until="networkidle")

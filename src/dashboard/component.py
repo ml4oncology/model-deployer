@@ -4,12 +4,12 @@ def create_patient_overview(mrn, next_sched_trt, cancer, age, gender, risk_score
     """Create a patient info card"""
 
     # Determine risk badge color and icon
-    if risk_level.lower() == "high risk":
-        badge_color = "#F14949"
-        risk_icon = "⚠"
-    else:
-        badge_color = "#00cc44"
-        risk_icon = "✓"
+    # if risk_level.lower() == "high risk":
+    #     badge_color = "#F14949"
+    #     risk_icon = "⚠"
+    # else:
+    #     badge_color = "#00cc44"
+    #     risk_icon = "✓"
 
     html_content = f"""
     <div class="overview-container">
@@ -37,10 +37,10 @@ def create_patient_overview(mrn, next_sched_trt, cancer, age, gender, risk_score
                 <div class="patient-info-label">30d Probability of ED Visit</div>
                 <div class="risk-score-container">
                     <span class="risk-score">{risk_score:.2f}</span>
-                    <span class="risk-badge" style="background-color: {badge_color};">
-                        <span class="risk-icon">{risk_icon}</span>
-                        {risk_level}
-                    </span>
+                    <!-- <span class="risk-badge" style="background-color: [badge_color];">
+                        <span class="risk-icon">[risk_icon]</span>
+                        [risk_level]
+                    </span> -->
                 </div>
             </div>
         </div>

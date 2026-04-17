@@ -17,6 +17,8 @@ def parse_args():
     parser.add_argument("--start-date", type=str, default="20240904")
     parser.add_argument("--end-date", type=str, default="20250101")
     parser.add_argument("--model-anchor", type=str, choices=["clinic", "treatment"], default="clinic")
+    parser.add_argument("--dashboard-layout", type=str, choices=["portrait", "landscape"], default="portrait")
+    parser.add_argument("--dashboard-font-scale", type=float, default=1.0)
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")
@@ -31,6 +33,8 @@ if __name__ == "__main__":
     start_date = args.start_date
     end_date = args.end_date
     anchor = args.model_anchor
+    dashboard_layout = args.dashboard_layout
+    dashboard_font_scale = args.dashboard_font_scale
     output_dir = args.output_dir
     data_dir = args.data_dir
     info_dir = args.info_dir
@@ -69,4 +73,4 @@ if __name__ == "__main__":
     meta = pd.concat(meta_data, ignore_index=True, axis=0)
 
     # Generate dashboard per patient
-    save_dashboard_png(out, meta, output_dir)
+    save_dashboard_png(out, meta, output_dir, layout=dashboard_layout, font_scale=dashboard_font_scale)
