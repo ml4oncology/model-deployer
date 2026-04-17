@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, TypeVar
 
 import matplotlib.pyplot as plt  
+from matplotlib.patches import FancyArrow
 import numpy as np
 import pandas as pd
 import shap  
@@ -22,7 +23,6 @@ from dateutil.relativedelta import relativedelta
 from deployer.model_eval.util import clean_feature_name  
 
 import textwrap
-import re
 
 def wrap_label(label, width=25):
     return "\n".join(textwrap.wrap(label, width=width))
@@ -38,89 +38,73 @@ def predict(data: pd.DataFrame, models: list[ScikitModel]):
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
 def _fix_waterfall_labels(fig: plt.Figure, min_bar_width: float = 0.2) -> None:
-    for ax in fig.axes:
-        patches = [p for p in ax.patches if hasattr(p, "get_width")]
-        texts = [t for t in ax.texts if t.get_text().lstrip("−-+").replace(".", "").isdigit()]
+    if not fig.axes:
+        return
 
-        if not patches or not texts:
+    ax = fig.axes[0]
+    texts = [t for t in ax.texts if t.get_text().lstrip("−-+").replace(".", "").isdigit()]
+    arrows = [p for p in ax.patches if isinstance(p, FancyArrow)]
+
+    if not texts or not arrows:
+        return
+
+    x_min, x_max = ax.get_xlim()
+    axis_range = x_max - x_min
+    if axis_range <= 0:
+        return
+
+    text_rows = sorted(texts, key=lambda text: text.get_position()[1], reverse=True)
+
+    arrow_rows = []
+    for arrow in arrows:
+        verts = arrow.get_path().vertices
+        transform = arrow.get_transform()
+        verts_display = transform.transform(verts)
+        verts_data = ax.transData.inverted().transform(verts_display)
+        width = float(np.max(verts_data[:, 0]) - np.min(verts_data[:, 0]))
+        center_y = float(np.mean(verts_data[:, 1]))
+        arrow_rows.append((center_y, width, verts_data, arrow))
+
+    arrow_rows.sort(key=lambda row: row[0], reverse=True)
+
+    for text, (_, bar_width, verts_data, arrow) in zip(text_rows, arrow_rows):
+        if bar_width / axis_range >= min_bar_width:
             continue
 
-        x_min, x_max = ax.get_xlim()
-        axis_range = x_max - x_min
+        is_positive = arrow._dx >= 0
+        bar_tip = float(np.max(verts_data[:, 0]) if is_positive else np.min(verts_data[:, 0]))
+        _, tip_y = text.get_position()
+        offset_points = 1 if is_positive else -1
 
-        for patch, text in zip(patches, texts):
-            bar_width = abs(patch.get_width())
+        text.set_position((bar_tip, tip_y))
+        text.set_transform(
+            ax.transData + plt.matplotlib.transforms.ScaledTranslation(
+                offset_points / 72.0,
+                0,
+                fig.dpi_scale_trans,
+            )
+        )
+        text.set_ha("left" if is_positive else "right")
+        text.set_va("center")
+        text.set_clip_on(False)
 
-            if bar_width / axis_range < min_bar_width:
-
-                # read true tip from patch geometry
-                is_positive = patch.get_width() >= 0
-
-                # Get all vertices of the arrow patch and find the extreme x point
-                verts = patch.get_path().vertices  # shape (N, 2) in axes coordinates
-                transform = patch.get_transform()
-                verts_display = transform.transform(verts)  # convert to display coords
-                ax_transform = ax.transData.inverted()
-                verts_data = ax_transform.transform(verts_display)  # back to data coords
-
-                if is_positive:
-                    bar_tip = verts_data[:, 0].max()  # rightmost point = arrow tip
-                else:
-                    bar_tip = verts_data[:, 0].min()  # leftmost point = arrow tip
-
-                nudge = axis_range * 0.0001
-                new_x = bar_tip + nudge if is_positive else bar_tip - nudge
-                ha = "left" if is_positive else "right"
-
-                text.set_x(new_x)
-                text.set_ha(ha)
-                text.set_clip_on(False)
-
-                # Use edgecolor instead of facecolor — SHAP bars have alpha=0 face
-                edge = patch.get_edgecolor()
-                if edge[3] > 0:  # edge is visible
-                    text.set_color(edge)
-                else:
-                    # Fall back: red for positive bars, blue for negative
-                    text.set_color("#ff0051" if patch.get_width() >= 0 else "#008bfb")
-
-
-def _rename_waterfall_annotations(fig: plt.Figure) -> None:
-    replacements = [
-        (re.compile(r"^\$?E\[f\(X\)\]\$?\s*=\s*"), "Average ED Visit Risk = "),
-        (re.compile(r"^\$?f\(x\)\$?\s*=\s*"), "Patient's Predicted ED Visit Risk = "),
-    ]
-    standalone_replacements = {
-        "$E[f(X)]$": "Average ED Visit Risk",
-        "E[f(X)]": "Average ED Visit Risk",
-        "$f(x)$": "Patient's Predicted ED Visit Risk",
-        "f(x)": "Patient's Predicted ED Visit Risk",
-    }
-
-    for ax in fig.axes:
-        for text in ax.texts:
-            label = text.get_text().strip()
-            if label in standalone_replacements:
-                text.set_text(standalone_replacements[label])
-                continue
-
-            for pattern, replacement in replacements:
-                if pattern.match(label):
-                    text.set_text(pattern.sub(replacement, label))
-                    break
-
+        edge = arrow.get_edgecolor()
+        if len(edge) >= 4 and edge[3] > 0:
+            text.set_color(edge)
+        else:
+            text.set_color("#ff0051" if is_positive else "#008bfb")
 
 def _add_waterfall_annotation_legend(fig: plt.Figure) -> None:
     legend_text = (
-        "Legend: f(x) = Patient's Predicted ED Visit Risk; "
-        "E[f(X)] = Average ED Visit Risk"
+        "f(x): Patient's Predicted ED Visit Risk\n"
+        "E[f(X)]: Average ED Visit Risk"
     )
     fig.text(
         0.02,
-        0.015,
+        0.985,
         legend_text,
         ha="left",
-        va="bottom",
+        va="top",
         fontsize=11,
         color="#444",
         bbox=dict(boxstyle="round,pad=0.35", facecolor="#f5f5f5", edgecolor="#d9d9d9"),
@@ -174,8 +158,7 @@ def _save_shap_waterfall(
     # --- Fix clipped labels: move text outside narrow bars ---
     fig = plt.gcf()
     _fix_waterfall_labels(fig)
-    _rename_waterfall_annotations(fig)
-    fig.subplots_adjust(bottom=0.12)
+    fig.subplots_adjust(top=0.90)
     _add_waterfall_annotation_legend(fig)
 
     clinic_date_str = pd.Timestamp(clinic_date).strftime('%Y%m%d')

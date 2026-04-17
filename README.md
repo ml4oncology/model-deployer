@@ -13,6 +13,20 @@ pre-commit install
 mypy --install-types
 ```
 
+# Running the dashboard pipeline
+```bash
+python src/main.py --start-date 20240904 --end-date 20240905 --model-anchor clinic
+```
+
+Optional dashboard arguments:
+- `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
+- `--dashboard-font-scale FLOAT` scales clinician-facing dashboard text and histogram text proportionally. Default is `1.0`.
+
+Example:
+```bash
+python src/main.py --start-date 20240904 --end-date 20240905 --model-anchor clinic --dashboard-font-scale 1.5
+```
+
 # Project Organization
 ```
 ├── src             <- The source code
