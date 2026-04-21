@@ -1,5 +1,12 @@
 import math
 
+
+def _same_diagnosis_description(cancer: str) -> str:
+    if cancer.strip().lower() == "other":
+        return "patients with cancer type 'Other'"
+    return f"patients with {cancer.lower()} cancer"
+
+
 def create_patient_overview(mrn, next_sched_trt, cancer, age, gender, risk_score, risk_level):
     """Create a patient info card"""
 
@@ -122,11 +129,12 @@ def create_percentile_overview(p_all, p_same, cancer):
     same_section = ""
     if not (isinstance(p_same, float) and math.isnan(p_same)):
         same_suffix = get_suffix(p_same)
+        diagnosis_description = _same_diagnosis_description(cancer)
         same_section = f"""
         <div class="percentile-info-section">
             <div class="patient-info-label">Risk Percentile - Same Diagnosis</div>
             <div class="percentile-info-value">{p_same}{same_suffix}</div>
-            <div class="patient-info-label">Higher risk than {p_same}% of patients with {cancer.lower()} cancer</div>
+            <div class="patient-info-label">Higher risk than {p_same}% of {diagnosis_description}</div>
         </div>"""
 
     return f"""

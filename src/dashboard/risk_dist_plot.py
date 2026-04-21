@@ -2,6 +2,13 @@ import numpy as np
 import pandas as pd
 import plotly.figure_factory as ff
 
+
+def _same_cancer_group_label(cancer: str) -> str:
+    if cancer.strip().lower() == "other":
+        return "Patients with cancer type 'Other'"
+    return f"{cancer} cancer patients"
+
+
 def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, font_scale: float = 1.0):
     """
     Compute risk score distribution plot and percentile ranks for a given patient.
@@ -41,10 +48,11 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
 
     same_cancer_data = list(other.loc[same_cancer, pred_col])
     if len(same_cancer_data) >= MIN_SAME_CANCER:
+        same_cancer_label = _same_cancer_group_label(main_cancer)
         hist_data = [list(other[pred_col]), same_cancer_data]
         group_labels = [
             f"All patients<br>N={len(other)}",
-            f"{main_cancer} cancer patients<br>N={sum(same_cancer)}",
+            f"{same_cancer_label}<br>N={sum(same_cancer)}",
         ]
         colors = ["#374151", "#2dd4bf"]
     else:
@@ -69,8 +77,8 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
     )
 
     title = dict(
-        text="Risk Score Comparison",
-        font=dict(size=20 * font_scale, color="#222", family="Helvetica Neue"),
+        text="<b>Risk Score Comparison</b>",
+        font=dict(size=18 * font_scale, color="#222", family="Helvetica Neue"),
         x=0.01,
         xanchor="left",
         subtitle=dict(
@@ -80,15 +88,15 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
     )
     fig.update_layout(
         title=title,
-        legend=dict(xanchor="right", font=dict(size=13 * font_scale)),
+        legend=dict(xanchor="right", font=dict(size=14 * font_scale)),
         xaxis_title="Probability of Patients Ending up in ED",
         yaxis_title="Density of Patients",
         template="plotly_white",
         hovermode=False,
-        font=dict(size=13 * font_scale),
+        font=dict(size=14 * font_scale),
     )
-    fig.update_xaxes(title_font=dict(size=15 * font_scale), tickfont=dict(size=12 * font_scale))
-    fig.update_yaxes(title_font=dict(size=15 * font_scale), tickfont=dict(size=12 * font_scale))
+    fig.update_xaxes(title_font=dict(size=16 * font_scale), tickfont=dict(size=14 * font_scale))
+    fig.update_yaxes(title_font=dict(size=16 * font_scale), tickfont=dict(size=14 * font_scale))
 
     # Percentile: same-cancer percentile falls back to all-patients when insufficient data
     percentile_all = int(round(np.mean(np.array(hist_data[0]) < x) * 100))

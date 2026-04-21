@@ -31,6 +31,9 @@ ScikitModel = TypeVar("ScikitModel", bound=BaseEstimator)
 
 ANCHOR_META_COLS = {"clinic": ["mrn", "next_sched_trt_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
 SHAP_SUBDIR = "shap_waterfall"  
+SHAP_LABEL_FONT_SIZE = 8
+SHAP_BODY_FONT_SIZE = 8
+SHAP_ANNOTATION_FONT_SIZE = 8
 
 
 def predict(data: pd.DataFrame, models: list[ScikitModel]):
@@ -94,7 +97,7 @@ def _fix_waterfall_labels(fig: plt.Figure, min_bar_width: float = 0.2) -> None:
         else:
             text.set_color("#ff0051" if is_positive else "#008bfb")
 
-def _add_waterfall_annotation_legend(fig: plt.Figure) -> None:
+def _add_waterfall_annotation_legend(fig: plt.Figure, font_scale: float = 1.0) -> None:
     legend_text = (
         "f(x): Patient's Predicted ED Visit Risk\n"
         "E[f(X)]: Average ED Visit Risk"
@@ -105,10 +108,29 @@ def _add_waterfall_annotation_legend(fig: plt.Figure) -> None:
         legend_text,
         ha="left",
         va="top",
-        fontsize=11,
+        fontsize=SHAP_ANNOTATION_FONT_SIZE * font_scale,
         color="#444",
         bbox=dict(boxstyle="round,pad=0.35", facecolor="#f5f5f5", edgecolor="#d9d9d9"),
     )
+
+
+def _apply_waterfall_typography(fig: plt.Figure, font_scale: float = 1.0) -> None:
+    if not fig.axes:
+        return
+
+    ax = fig.axes[0]
+    label_size = SHAP_LABEL_FONT_SIZE * font_scale
+    body_size = SHAP_BODY_FONT_SIZE * font_scale
+
+    for text in ax.texts:
+        text.set_fontsize(body_size)
+
+    for tick in ax.get_xticklabels() + ax.get_yticklabels():
+        tick.set_fontsize(body_size)
+
+    ax.tick_params(axis="both", labelsize=body_size)
+    ax.xaxis.label.set_fontsize(label_size)
+    ax.yaxis.label.set_fontsize(label_size)
 
 def _save_shap_waterfall(
     model: Model,
@@ -119,6 +141,7 @@ def _save_shap_waterfall(
     mrn: int,
     clinic_date: pd.Timestamp,
     max_display: int = 10,
+    font_scale: float = 1.0,
 ) -> None:
     """
     Compute and save a SHAP waterfall plot for a single model input row.
@@ -151,15 +174,17 @@ def _save_shap_waterfall(
     )
 
     # Step 5: Plot and save (mirrors component.py shap.plots.waterfall call)
-    fig, ax = plt.subplots(figsize=(12, 10))
-    shap.plots.waterfall(explanation, max_display=max_display, show=False)
+    with plt.rc_context({"font.size": SHAP_LABEL_FONT_SIZE * font_scale}):
+        fig, ax = plt.subplots(figsize=(12, 10))
+        shap.plots.waterfall(explanation, max_display=max_display, show=False)
     plt.tight_layout(pad=0.5)
 
     # --- Fix clipped labels: move text outside narrow bars ---
     fig = plt.gcf()
+    _apply_waterfall_typography(fig, font_scale=font_scale)
     _fix_waterfall_labels(fig)
     fig.subplots_adjust(top=0.90)
-    _add_waterfall_annotation_legend(fig)
+    _add_waterfall_annotation_legend(fig, font_scale=font_scale)
 
     clinic_date_str = pd.Timestamp(clinic_date).strftime('%Y%m%d')
     filename = shap_dir / f"shap_mrn_{mrn}_clinic_{clinic_date_str}.png"
@@ -188,6 +213,7 @@ def get_model_output(
     thresholds: pd.DataFrame,
     pred_fn: Callable | None = None,
     output_dir: str | Path | None = None,  
+    dashboard_font_scale: float = 1.0,
 ) -> dict[str, pd.DataFrame]:
     """
     TODO: set data_pull_day as the assessment date for treatment date anchor
@@ -237,6 +263,7 @@ def get_model_output(
                 row_idx=row_idx,
                 mrn=int(row["mrn"]),
                 clinic_date=row["clinic_date"],
+                font_scale=dashboard_font_scale,
             )
 
     return {

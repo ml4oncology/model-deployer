@@ -82,8 +82,8 @@ def _build_dashboard_html(
 
     <!-- Risk distribution row: plot (4 cols) + percentile panel (1 col) -->
     <div class="dashboard-section dashboard-section--risk">
-      <div>{risk_dist_html}</div>
-      <div>{percentile_html}</div>
+      <div class="dashboard-risk-plot">{risk_dist_html}</div>
+      <div class="dashboard-risk-percentiles">{percentile_html}</div>
     </div>
 
     <!-- SHAP + model card row -->
