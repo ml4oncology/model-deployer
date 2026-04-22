@@ -6,6 +6,7 @@ import pandas as pd
 from deployer.data_prep.pipeline import build_features, get_data
 from deployer.loader import Config, Model
 from deployer.model_eval.inference import get_model_output
+from deployer.dashboard.generate_dashboard_per_patient import save_dashboard_png
 from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
@@ -16,6 +17,8 @@ def parse_args():
     parser.add_argument("--start-date", type=str, default="20240904")
     parser.add_argument("--end-date", type=str, default="20250101")
     parser.add_argument("--model-anchor", type=str, choices=["clinic", "treatment"], default="clinic")
+    parser.add_argument("--dashboard-layout", type=str, choices=["portrait", "landscape"], default="portrait")
+    parser.add_argument("--dashboard-font-scale", type=float, default=1.0)
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")
@@ -30,6 +33,8 @@ if __name__ == "__main__":
     start_date = args.start_date
     end_date = args.end_date
     anchor = args.model_anchor
+    dashboard_layout = args.dashboard_layout
+    dashboard_font_scale = args.dashboard_font_scale
     output_dir = args.output_dir
     data_dir = args.data_dir
     info_dir = args.info_dir
@@ -43,22 +48,37 @@ if __name__ == "__main__":
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
-    inputs, outputs = [], []
+    inputs, outputs, meta_data = [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor)
+        
         if "error" in feats:
             print(feats["error"])
             continue
 
         data = get_data(config, model, feats, data_pull_date)
-        res = get_model_output(model, data, thresholds)
+        res = get_model_output(
+            model,
+            data,
+            feats['demographic'],
+            thresholds,
+            pred_fn=None,
+            output_dir=output_dir,
+            dashboard_font_scale=dashboard_font_scale,
+        )
 
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
+        meta_data.append(res["demographic_info"])
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
 
     inp = pd.concat(inputs, ignore_index=True, axis=0)
     inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")
+
+    meta = pd.concat(meta_data, ignore_index=True, axis=0)
+
+    # Generate dashboard per patient
+    save_dashboard_png(out, meta, output_dir, layout=dashboard_layout, font_scale=dashboard_font_scale)

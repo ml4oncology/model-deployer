@@ -6,17 +6,27 @@ Silent deployment of AIM2REDUCE models to predict undesirable cancer events in P
 ```bash
 git clone https://github.com/ml4oncology/model-deployer
 pip install -e ".[dev]"
+playwright install chromium
 
 # optional
 pre-commit install
 mypy --install-types
 ```
 
-# Example Usage
-```bash
+# Running the dashboard pipeline
+\```bash
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
 python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804
-```
+\```
+
+Optional dashboard arguments:
+- `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
+- `--dashboard-font-scale FLOAT` scales clinician-facing dashboard text and histogram text proportionally. Default is `1.0`.
+
+Example:
+\```bash
+python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --dashboard-font-scale 1.5
+\```
 
 # Project Organization
 ```
