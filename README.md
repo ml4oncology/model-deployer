@@ -14,19 +14,19 @@ mypy --install-types
 ```
 
 # Running the dashboard pipeline
-\```bash
+```bash
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
 python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804
-\```
+```
 
 Optional dashboard arguments:
 - `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
 - `--dashboard-font-scale FLOAT` scales clinician-facing dashboard text and histogram text proportionally. Default is `1.0`.
 
 Example:
-\```bash
+```bash
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --dashboard-font-scale 1.5
-\```
+```
 
 # Project Organization
 ```
