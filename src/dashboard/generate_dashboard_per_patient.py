@@ -35,7 +35,7 @@ def _build_dashboard_html(
     """Assemble the full dashboard HTML for one patient/clinic_date row."""
 
     # --- Patient card ---
-    risk_level = "High Risk" if row["ed_pred_alarm_0.1"] == 1 else "Low Risk"
+    risk_level = "N/A" #"High Risk" if row["ed_pred_alarm_0.1"] == 1 else "Low Risk"
     patient_html = create_patient_overview(
         mrn=mrn,
         next_sched_trt=str(row["next_sched_trt_date"])[:10],
