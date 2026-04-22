@@ -88,9 +88,11 @@ def _build_dashboard_html(
 
     <!-- SHAP + model card row -->
     <div class="dashboard-section dashboard-section--bottom">
-      <div>
+      <div class="dashboard-shap-section">
         <div class="section-title">Feature Contribution</div>
-        {shap_img_tag}
+        <div class="dashboard-shap-panel">
+          <div class="dashboard-shap-image">{shap_img_tag}</div>
+        </div>
       </div>
       <div>{model_html}</div>
     </div>
