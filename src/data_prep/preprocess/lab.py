@@ -57,8 +57,10 @@ def process_lab_data(df):
         "Insufficient quantity for testing. Please re-order test and send new sample.",
         "Unable to perform: Lost in transit.",
         ">10.0", # TODO: replace with some other numerical entry?
+        ">1000", # TODO: replace with some other numerical entry?
         "Unable to obtain result due to the interference of severe hemolysis.",
         "Platelets clumped, unable to count. A Sodium Citrate (light blue) tube is required. Please order CITRATED PLATELET COUNT. The platelet result will be reported for the CITRATED PLATELET COUNT procedure when available.",
+        "Sample rejected due to severe hemolysis.",
     ])
     df[mask] = np.nan #None
 

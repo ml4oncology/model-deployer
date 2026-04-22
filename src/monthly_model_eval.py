@@ -91,11 +91,19 @@ if __name__ == "__main__":
     # Merge ED visit dates and true labels to Model prediction file
     ed_visit = get_emergency_room_data(ED_visits_file, anchor='')
     df_ED_visit = get_ED_labels(df, ed_visit, lookahead_window=31)
+    
+    '''
+    labels_file = f"{anchor}_pred_w_ED_labels.csv"
+    df_ED_visit["target_ED_31d"] = df_ED_visit["target_ED_31d"].astype(int)
+    df_ED_visit.to_csv(f"{output_dir}/{labels_file}", index=False)
+    '''
+    
     # filter out cases where ED visit occurred on the same day
     df_ED_visit = df_ED_visit[(df_ED_visit['target_ED_date'] - df_ED_visit['assessment_date']).dt.days != 0]
     
     # Sort patients only with completed treatments during the month
     df_ED_visit = get_patients_with_completed_trt(config, chemo_file, start_date, end_date, df_ED_visit, anchor)
+    
     
     ######################  Check model Performance ###########################
     
@@ -142,4 +150,4 @@ if __name__ == "__main__":
     ######################  Save Output ###########################
     pd.DataFrame(model_results).to_csv(f"{output_dir}/{perf_file}", index=False)
     print(f"Performance metrics saved to {perf_file}.")
-                 
+              

@@ -61,7 +61,7 @@ if __name__ == "__main__":
     thresholds.columns = thresholds.columns.str.lower()
 
     date_range = pd.date_range(start_date, end_date, freq='d').strftime("%Y%m%d")
-    results, input_data = [], []
+    results, input_data, input_data_raw = [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)): 
 
         print(f'**** Processing #{i}: {data_pull_date} *****')
@@ -69,17 +69,23 @@ if __name__ == "__main__":
         postfix = POSTFIX_MAP[anchor]
         chemo_file = f"{data_dir}/{proj_name}_chemo_{postfix}{data_pull_date}.csv"
         diagnosis_file = f"{data_dir}/{proj_name}_diagnosis_{postfix}{data_pull_date}.csv"
+        
+        if not os.path.exists(chemo_file) or not os.path.exists(diagnosis_file):
+            print(f"Chemo/Diagnosis file missing for: {data_pull_date}")
+            continue
+        
         if not pd.read_csv(chemo_file).empty and not pd.read_csv(diagnosis_file).empty:
             ######################### Data Processing ################################
             ##******************** ED **********************##
             # Process and prepare data
-            prepared_data_ED = final_process(config, model, data_dir, proj_name, data_pull_date)
+            prepared_data_ED, prepared_data_ED_raw = final_process(config, model, data_dir, proj_name, data_pull_date)
 
             ######################### Model Evaluation ################################        
             ##******************** ED **********************##
             ED_result = get_ED_visit_model_output(model, prepared_data_ED, thresholds, f"{output_dir}/Figures")
 
             input_data.append(prepared_data_ED)
+            input_data_raw.append(prepared_data_ED_raw)
             results.append(ED_result)
         else:
             print(f"No Patient {anchor.title()} Data for: {data_pull_date}")
@@ -89,3 +95,6 @@ if __name__ == "__main__":
 
     input_data = pd.concat(input_data, ignore_index=True, axis=0)
     input_data.to_parquet(f"{output_dir}/input_{data_pull_date}_{anchor}.parquet")
+    
+    input_data_raw = pd.concat(input_data_raw, ignore_index=True, axis=0)
+    input_data_raw.to_parquet(f"{output_dir}/input_raw_{data_pull_date}_{anchor}.parquet")

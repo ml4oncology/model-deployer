@@ -56,11 +56,13 @@ def final_process(
     
     # Transform Data: Impute, Normalize, and Clip
     df.loc[0, df.columns[df.isna().all()]] = 0
+    df_noTransform = df.copy()
     df = model.prep.transform_data(df, one_hot_encode=False)
     
     if model.anchor == 'treatment':
         # keep treatments scheduled for the next day
         mask = df['treatment_date'] == pd.to_datetime(data_pull_day) + timedelta(days=1) 
         df = df[mask]
+        df_noTransform = df_noTransform[mask]
     
-    return df
+    return df, df_noTransform
