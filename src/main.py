@@ -19,6 +19,11 @@ def parse_args():
     parser.add_argument("--model-anchor", type=str, choices=["clinic", "treatment"], default="clinic")
     parser.add_argument("--dashboard-layout", type=str, choices=["portrait", "landscape"], default="portrait")
     parser.add_argument("--dashboard-font-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--disable-save-dashboard-png",
+        action="store_true",
+        help="Skip generating dashboard PNG files.",
+    )
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")
@@ -35,6 +40,7 @@ if __name__ == "__main__":
     anchor = args.model_anchor
     dashboard_layout = args.dashboard_layout
     dashboard_font_scale = args.dashboard_font_scale
+    disable_save_dashboard_png = args.disable_save_dashboard_png
     output_dir = args.output_dir
     data_dir = args.data_dir
     info_dir = args.info_dir
@@ -73,12 +79,15 @@ if __name__ == "__main__":
         meta_data.append(res["demographic_info"])
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
-    out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
 
     inp = pd.concat(inputs, ignore_index=True, axis=0)
     inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")
 
     meta = pd.concat(meta_data, ignore_index=True, axis=0)
 
+    out = out.merge(meta[['mrn', 'clinic_date', 'cancer']], on=['mrn', 'clinic_date'], how='left')
+    out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
+
     # Generate dashboard per patient
-    save_dashboard_png(out, meta, output_dir, layout=dashboard_layout, font_scale=dashboard_font_scale)
+    if not disable_save_dashboard_png:
+        save_dashboard_png(out, meta, output_dir, layout=dashboard_layout, font_scale=dashboard_font_scale)

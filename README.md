@@ -22,6 +22,7 @@ python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250
 Optional dashboard arguments:
 - `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
 - `--dashboard-font-scale FLOAT` scales clinician-facing dashboard text and histogram text proportionally. Default is `1.0`.
+- `--disable-save-dashboard-png` skips dashboard PNG generation. By default, dashboard PNGs are generated.
 
 Example:
 ```bash
