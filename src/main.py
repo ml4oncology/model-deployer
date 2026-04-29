@@ -64,7 +64,7 @@ if __name__ == "__main__":
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor)
- 
+
         if "error" in feats:
             print(feats["error"])
             continue
@@ -98,7 +98,13 @@ if __name__ == "__main__":
 
     if run_on_silent_deployment:
         # filter out patients from out
-        # TO-DO
+        out['clinic_date'] = pd.to_datetime(out['clinic_date'])
+        out.sort_values(by=['clinic_date'], ascending=True, inplace=True)
+        # for every mrn, next_sched_trt_date, keep rows with the latest clinic_date
+        out = out.loc[out.groupby(['mrn', 'next_sched_trt_date'])['clinic_date'].idxmax()]
+        out.sort_values(by=['clinic_date'], ascending=True, inplace=True)
+        # for every mrn, regimen, keep row with earliest clinic date
+        out = out.loc[out.groupby(['mrn', 'regimen'])['clinic_date'].idxmin()]       
         out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
 
     # Generate dashboard per patient
