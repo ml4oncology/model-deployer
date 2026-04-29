@@ -94,6 +94,10 @@ def get_data(
     miss_feats.columns += "_is_missing"
     df = pd.concat([df, miss_feats], axis=1)
 
+    # Filter out regimens to exclude
+    df = df[~df['regimen'].isin(config.regimens_to_exclude)]
+    df['dashboard_regimen'] = df['regimen']
+
     # Encode Regimens and Intent
     df = encode_regimens(df, config.gi_regimens)
     df = encode_primary_sites(df, config.cancer_site_list)
@@ -112,11 +116,14 @@ def get_data(
 
     # Remove columns not used in training (keep the mrn and dates though)
     cols = df.columns
-    cols = cols[cols.str.contains("mrn|date") | cols.isin(model.model_features)]
+    cols = cols[cols.str.contains("mrn|date|dashboard_regimen") | cols.isin(model.model_features)]
     df = df[cols]
 
     # Transform Data: Impute, Normalize, and Clip
     df = model.prep.transform_data(df, one_hot_encode=False)
+
+    # Rename dashboard_regimen back to regimen
+    df.rename(columns={"dashboard_regimen": "regimen"}, inplace=True)
 
     return df
 

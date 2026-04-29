@@ -29,7 +29,8 @@ def wrap_label(label, width=25):
 
 ScikitModel = TypeVar("ScikitModel", bound=BaseEstimator)
 
-ANCHOR_META_COLS = {"clinic": ["mrn", "next_sched_trt_date", "clinic_date"], "treatment": ["mrn", "treatment_date"]}
+ANCHOR_META_COLS = {"clinic": ["mrn", "next_sched_trt_date", "clinic_date", "regimen"], 
+                    "treatment": ["mrn", "treatment_date", "regimen"]}
 SHAP_SUBDIR = "shap_waterfall"  
 SHAP_LABEL_FONT_SIZE = 8
 SHAP_BODY_FONT_SIZE = 8
@@ -214,6 +215,7 @@ def get_model_output(
     pred_fn: Callable | None = None,
     output_dir: str | Path | None = None,  
     dashboard_font_scale: float = 1.0,
+    disable_save_dashboard_png: bool = False
 ) -> dict[str, pd.DataFrame]:
     """
     TODO: set data_pull_day as the assessment date for treatment date anchor
@@ -224,7 +226,7 @@ def get_model_output(
     model_input = df[model.model_features].copy() # reorder model features according to the order used in training
     meta_cols = ANCHOR_META_COLS[model.anchor]
     model_output = df[meta_cols].copy()
- 
+
     # Drop any row that contains NaN => to work with RF
     # NOTE: mostly when ['height', 'weight', 'body_surface_area'] is missing
     # TODO: impute them instead of dropping
@@ -246,7 +248,7 @@ def get_model_output(
         model_output[f"ed_pred_alarm_{alarm_rate}"] = (model_output["ed_pred_prob"] > pred_thresh).astype(int)
 
     # Compute and save SHAP waterfall plots if output_dir is provided
-    if output_dir is not None:
+    if output_dir is not None and not disable_save_dashboard_png:
         shap_dir = Path(output_dir) / SHAP_SUBDIR
         shap_dir.mkdir(parents=True, exist_ok=True)
 

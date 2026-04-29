@@ -24,6 +24,7 @@ def parse_args():
         action="store_true",
         help="Skip generating dashboard PNG files.",
     )
+    parser.add_argument("--run-on-silent-deployment", type=bool, default=False)
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")
@@ -41,10 +42,15 @@ if __name__ == "__main__":
     dashboard_layout = args.dashboard_layout
     dashboard_font_scale = args.dashboard_font_scale
     disable_save_dashboard_png = args.disable_save_dashboard_png
+    run_on_silent_deployment = args.run_on_silent_deployment
     output_dir = args.output_dir
     data_dir = args.data_dir
     info_dir = args.info_dir
     model_dir = args.model_dir
+
+    # if run_on_silent_deployment, do not generate dashboard
+    if run_on_silent_deployment:
+        disable_save_dashboard_png = True
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -58,12 +64,13 @@ if __name__ == "__main__":
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor)
-        
+ 
         if "error" in feats:
             print(feats["error"])
             continue
 
         data = get_data(config, model, feats, data_pull_date)
+
         res = get_model_output(
             model,
             data,
@@ -72,6 +79,7 @@ if __name__ == "__main__":
             pred_fn=None,
             output_dir=output_dir,
             dashboard_font_scale=dashboard_font_scale,
+            disable_save_dashboard_png=disable_save_dashboard_png
         )
 
         inputs.append(res["model_input"])
@@ -87,6 +95,11 @@ if __name__ == "__main__":
 
     out = out.merge(meta[['mrn', 'clinic_date', 'cancer']], on=['mrn', 'clinic_date'], how='left')
     out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
+
+    if run_on_silent_deployment:
+        # filter out patients from out
+        # TO-DO
+        out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
 
     # Generate dashboard per patient
     if not disable_save_dashboard_png:

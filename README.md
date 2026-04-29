@@ -23,6 +23,7 @@ Optional dashboard arguments:
 - `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
 - `--dashboard-font-scale FLOAT` scales clinician-facing dashboard text and histogram text proportionally. Default is `1.0`.
 - `--disable-save-dashboard-png` skips dashboard PNG generation. By default, dashboard PNGs are generated.
+- `--run-on-silent-deployment` runs the code on silent deployment patients for baseline histogram in dashboard. Default is `False`.
 
 Example:
 ```bash
