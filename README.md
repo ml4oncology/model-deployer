@@ -16,8 +16,12 @@ mypy --install-types
 # Running the dashboard pipeline
 ```bash
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
-python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804
+python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804 --disable-save-dashboard-png
 ```
+
+Dashboard prerequisite:
+- Dashboard generation uses the silent deployment baseline file. To create that baseline, first run `python src/main.py --start-date [start_date] --end-date [end_date] --model-anchor clinic --run-on-silent-deployment True`, where `[start_date]` and `[end_date]` are the silent deployment dates.
+- If you are not generating that silent deployment baseline first, run `src/main.py` with `--disable-save-dashboard-png` to avoid dashboard generation errors.
 
 Optional dashboard arguments:
 - `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
