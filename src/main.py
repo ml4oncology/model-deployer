@@ -109,4 +109,11 @@ if __name__ == "__main__":
 
     # Generate dashboard per patient
     if not disable_save_dashboard_png:
-        save_dashboard_png(out, meta, output_dir, layout=dashboard_layout, font_scale=dashboard_font_scale)
+        save_dashboard_png(
+            out,
+            meta,
+            output_dir,
+            anchor=anchor,
+            layout=dashboard_layout,
+            font_scale=dashboard_font_scale,
+        )

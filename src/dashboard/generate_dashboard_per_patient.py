@@ -28,6 +28,7 @@ def _build_dashboard_html(
     meta_row: pd.Series,
     df_output: pd.DataFrame,
     df_meta: pd.DataFrame,
+    df_baseline: pd.DataFrame,
     shap_png_path: Path,
     layout: str,
     font_scale: float,
@@ -47,7 +48,13 @@ def _build_dashboard_html(
     )
 
     # --- Risk distribution plot ---
-    percentile_all, percentile_same, fig = risk_dist_plot(mrn, df_output, df_meta, font_scale=font_scale)
+    percentile_all, percentile_same, fig = risk_dist_plot(
+        mrn,
+        df_output,
+        df_meta,
+        df_baseline,
+        font_scale=font_scale,
+    )
     risk_dist_html = pio.to_html(fig, full_html=False, include_plotlyjs="cdn")
     percentile_html = create_percentile_overview(percentile_all, percentile_same, meta_row["cancer"])
 
@@ -107,6 +114,7 @@ def save_dashboard_png(
     df_output: pd.DataFrame,
     df_meta: pd.DataFrame,
     output_dir: str | Path,
+    anchor: str,
     layout: str = "portrait",
     font_scale: float = DEFAULT_FONT_SCALE,
 ) -> None:
@@ -120,6 +128,7 @@ def save_dashboard_png(
                    ed_pred_prob, ed_pred_alarm_0.1
         df_meta:   DataFrame with columns: mrn, clinic_date, age, gender, cancer
         output_dir: Root output directory (same one passed to get_model_output).
+        anchor: Model anchor used to locate the fixed silent-deployment baseline file.
         layout: Dashboard layout style. Supported values are "portrait" and "landscape".
         font_scale: Multiplier applied to clinician-facing dashboard text.
     """
@@ -132,7 +141,15 @@ def save_dashboard_png(
     output_dir = Path(output_dir)
     dashboard_dir = output_dir / DASHBOARD_SUBDIR
     shap_dir = output_dir / SHAP_SUBDIR
+    baseline_path = output_dir / f"silent_deployment_output_{anchor}.csv"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
+
+    if not baseline_path.exists():
+        raise FileNotFoundError(
+            f"Silent deployment baseline file not found: {baseline_path}"
+        )
+
+    df_baseline = pd.read_csv(baseline_path, usecols=["mrn", "ed_pred_prob", "cancer"])
 
     # Index df_meta by (mrn, clinic_date) for fast lookup
     meta_indexed = df_meta.set_index(["mrn", "clinic_date"])
@@ -172,6 +189,7 @@ def save_dashboard_png(
                 meta_row=meta_row,
                 df_output=df_output,
                 df_meta=df_meta,
+                df_baseline=df_baseline,
                 shap_png_path=shap_png_path,
                 layout=layout,
                 font_scale=font_scale,

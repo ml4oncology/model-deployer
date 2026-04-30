@@ -3,8 +3,8 @@ import math
 
 def _same_diagnosis_description(cancer: str) -> str:
     if cancer.strip().lower() == "other":
-        return "patients with cancer type 'Other'"
-    return f"patients with {cancer.lower()} cancer"
+        return "patients with cancer type 'Other' starting new treatment"
+    return f"patients with {cancer.lower()} cancer starting new treatment"
 
 
 def create_patient_overview(mrn, next_sched_trt, cancer, age, gender, risk_score, risk_level):
@@ -142,7 +142,7 @@ def create_percentile_overview(p_all, p_same, cancer):
         <div class="percentile-info-section">
             <div class="patient-info-label">Risk Percentile - All Patients</div>
             <div class="percentile-info-value">{p_all}{all_suffix}</div>
-            <div class="patient-info-label">Higher risk than {p_all}% of all patients</div>
+            <div class="patient-info-label">Higher risk than {p_all}% of patients starting new treatment</div>
         </div>
         {same_section}
     </div>
