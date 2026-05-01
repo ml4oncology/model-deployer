@@ -3,7 +3,6 @@ Module to assemble and save patient dashboards as PNGs using Playwright.
 """
 
 import base64
-import os
 from pathlib import Path
 
 import pandas as pd
@@ -12,9 +11,10 @@ from playwright.sync_api import sync_playwright
 
 from deployer.dashboard.component import create_patient_overview, create_model_overview, create_percentile_overview
 from deployer.dashboard.risk_dist_plot import risk_dist_plot
+from deployer.dashboard.shap_waterfall import SHAP_SUBDIR, build_shap_explainer, save_shap_waterfall_plot
+from deployer.loader import Model
 
 DASHBOARD_SUBDIR = "dashboards"
-SHAP_SUBDIR = "shap_waterfall"
 SUPPORTED_LAYOUTS = {"portrait", "landscape"}
 DEFAULT_FONT_SCALE = 1.0
 
@@ -28,6 +28,7 @@ def _build_dashboard_html(
     meta_row: pd.Series,
     df_output: pd.DataFrame,
     df_meta: pd.DataFrame,
+    df_baseline: pd.DataFrame,
     shap_png_path: Path,
     layout: str,
     font_scale: float,
@@ -47,7 +48,13 @@ def _build_dashboard_html(
     )
 
     # --- Risk distribution plot ---
-    percentile_all, percentile_same, fig = risk_dist_plot(mrn, df_output, df_meta, font_scale=font_scale)
+    percentile_all, percentile_same, fig = risk_dist_plot(
+        mrn,
+        df_output,
+        df_meta,
+        df_baseline,
+        font_scale=font_scale,
+    )
     risk_dist_html = pio.to_html(fig, full_html=False, include_plotlyjs="cdn")
     percentile_html = create_percentile_overview(percentile_all, percentile_same, meta_row["cancer"])
 
@@ -104,9 +111,12 @@ def _build_dashboard_html(
 
 
 def save_dashboard_png(
+    model: Model,
+    df_input: pd.DataFrame,
     df_output: pd.DataFrame,
     df_meta: pd.DataFrame,
     output_dir: str | Path,
+    anchor: str,
     layout: str = "portrait",
     font_scale: float = DEFAULT_FONT_SCALE,
 ) -> None:
@@ -116,10 +126,13 @@ def save_dashboard_png(
     The SHAP waterfall PNG is deleted after use.
 
     Args:
+        model: Trained model bundle used to compute SHAP waterfall plots.
+        df_input: DataFrame of model inputs aligned 1:1 with df_output.
         df_output: DataFrame with columns: mrn, next_sched_trt_date, clinic_date,
                    ed_pred_prob, ed_pred_alarm_0.1
         df_meta:   DataFrame with columns: mrn, clinic_date, age, gender, cancer
         output_dir: Root output directory (same one passed to get_model_output).
+        anchor: Model anchor used to locate the fixed silent-deployment baseline file.
         layout: Dashboard layout style. Supported values are "portrait" and "landscape".
         font_scale: Multiplier applied to clinician-facing dashboard text.
     """
@@ -132,7 +145,26 @@ def save_dashboard_png(
     output_dir = Path(output_dir)
     dashboard_dir = output_dir / DASHBOARD_SUBDIR
     shap_dir = output_dir / SHAP_SUBDIR
+    baseline_path = output_dir / f"silent_deployment_output_{anchor}.csv"
     dashboard_dir.mkdir(parents=True, exist_ok=True)
+
+    if not baseline_path.exists():
+        raise FileNotFoundError(
+            f"Silent deployment baseline file not found: {baseline_path}"
+        )
+
+    if len(df_input) != len(df_output):
+        raise ValueError("df_input and df_output must have the same number of rows")
+
+    if df_output.empty:
+        return
+
+    df_baseline = pd.read_csv(baseline_path, usecols=["mrn", "ed_pred_prob", "cancer"])
+    shap_dir.mkdir(parents=True, exist_ok=True)
+    explainer = build_shap_explainer(model)
+
+    df_meta = df_meta.copy()
+    df_meta["clinic_date"] = pd.to_datetime(df_meta["clinic_date"])
 
     # Index df_meta by (mrn, clinic_date) for fast lookup
     meta_indexed = df_meta.set_index(["mrn", "clinic_date"])
@@ -142,18 +174,20 @@ def save_dashboard_png(
         browser = p.chromium.launch()
         page = browser.new_page(viewport=viewport)
 
-        df_meta["clinic_date"] = pd.to_datetime(df_meta["clinic_date"])
-
-        for _, row in df_output.iterrows():
+        for row_idx, row in df_output.reset_index(drop=True).iterrows():
             mrn = int(row["mrn"])
             clinic_date = pd.Timestamp(row["clinic_date"])
             clinic_date_str = clinic_date.strftime("%Y%m%d")
 
-            # Locate SHAP PNG
             shap_png_path = shap_dir / f"shap_mrn_{mrn}_clinic_{clinic_date_str}.png"
-            if not shap_png_path.exists():
-                print(f"[WARN] SHAP plot not found, skipping: {shap_png_path}")
-                continue
+            save_shap_waterfall_plot(
+                model=model,
+                model_input=df_input,
+                explainer=explainer,
+                output_path=shap_png_path,
+                row_idx=row_idx,
+                font_scale=font_scale,
+            )
 
             # Fetch matching meta row (most recent clinic_date <= current for this mrn)
             try:
@@ -172,6 +206,7 @@ def save_dashboard_png(
                 meta_row=meta_row,
                 df_output=df_output,
                 df_meta=df_meta,
+                df_baseline=df_baseline,
                 shap_png_path=shap_png_path,
                 layout=layout,
                 font_scale=font_scale,

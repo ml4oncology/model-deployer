@@ -103,9 +103,14 @@ def clean_regimens(df: pd.DataFrame, config: Config) -> pd.DataFrame:
     mask = df["regimen"].notnull()
     df = df[mask].copy()
 
+    # normalize whitespace in both the data and the mapping keys/values
+    df["regimen"] = df["regimen"].str.strip()
+    clean_map = {k.strip(): v.strip() if isinstance(v, str) else v 
+                 for k, v in config.epr2epic_regimen_map.items()}
+
     # map regimens from EPIC to EPR
     df["regimen_EPIC"] = df["regimen"]
-    df["regimen"] = df["regimen"].replace(config.epr2epic_regimen_map)
+    df["regimen"] = df["regimen"].replace(clean_map)
 
     # rename some of the regimens
     regimen_map = dict(config.epr_regimens.query("rename.notnull()")[["regimen", "rename"]].to_numpy())

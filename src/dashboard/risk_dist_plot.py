@@ -10,11 +10,17 @@ PLOT_MUTED_COLOR = "#666"
 
 def _same_cancer_group_label(cancer: str) -> str:
     if cancer.strip().lower() == "other":
-        return "Patients with cancer type 'Other'"
-    return f"{cancer} cancer patients"
+        return "Patients with cancer type 'Other' starting new treatment"
+    return f"Patients with {cancer} cancer starting new treatment"
 
 
-def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, font_scale: float = 1.0):
+def risk_dist_plot(
+    mrn: int,
+    df_output: pd.DataFrame,
+    df_meta: pd.DataFrame,
+    df_baseline: pd.DataFrame,
+    font_scale: float = 1.0,
+):
     """
     Compute risk score distribution plot and percentile ranks for a given patient.
 
@@ -22,6 +28,7 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
         mrn:        Target patient MRN.
         df_output:  DataFrame with columns: mrn, next_sched_trt_date, clinic_date, ed_pred_prob.
         df_meta:    DataFrame with columns: mrn, clinic_date, cancer (and others).
+        df_baseline: DataFrame with columns: mrn, ed_pred_prob, cancer.
 
     Returns:
         percentile_all:  Patient's risk percentile vs. all patients in the cohort.
@@ -30,39 +37,35 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
     """
     pred_col = "ed_pred_prob"
 
-    # Determine the time window from the target patient's next_sched_trt_date
-    next_trt_date = pd.to_datetime(df_output.loc[df_output["mrn"] == mrn, "next_sched_trt_date"].iloc[-1])
-    low, high = next_trt_date - pd.Timedelta(days=30), next_trt_date
+    risk = df_baseline[["mrn", pred_col, "cancer"]].copy()
 
-    # Filter df_output to ±30-day window and deduplicate to one row per MRN (most recent clinic visit)
-    window_mask = df_output["next_sched_trt_date"].between(low, high)
-    risk = df_output[window_mask].copy()
-    risk = risk.groupby("mrn").nth(-1).reset_index()
+    # Attach cancer type by exact mrn + clinic_date match, then keep the latest row for this MRN.
+    main = pd.merge(
+        df_output.loc[df_output["mrn"] == mrn, ["mrn", "clinic_date", pred_col]],
+        df_meta[["mrn", "clinic_date", "cancer"]],
+        how="left",
+        on=["mrn", "clinic_date"],
+    )
+    main = main.sort_values("clinic_date").tail(1)
 
-    # Attach cancer type from df_meta (most recent clinic_date per MRN)
-    meta = df_meta.sort_values("clinic_date").groupby("mrn").nth(-1).reset_index()[["mrn", "cancer"]]
-    risk = pd.merge(risk, meta, how="left", on="mrn")
-
-    # Split into target patient vs. all others
-    mask = risk["mrn"] == mrn
-    main, other = risk[mask], risk[~mask]
+    # Use the fixed silent-deployment population as the reference cohort.
     main_cancer = main["cancer"].iloc[0]
-    same_cancer = other["cancer"] == main_cancer
+    same_cancer = risk["cancer"] == main_cancer
 
     MIN_SAME_CANCER = 3  # minimum samples needed to plot same-cancer KDE
 
-    same_cancer_data = list(other.loc[same_cancer, pred_col])
+    same_cancer_data = list(risk.loc[same_cancer, pred_col])
     if len(same_cancer_data) >= MIN_SAME_CANCER:
         same_cancer_label = _same_cancer_group_label(main_cancer)
-        hist_data = [list(other[pred_col]), same_cancer_data]
+        hist_data = [list(risk[pred_col]), same_cancer_data]
         group_labels = [
-            f"All patients<br>N={len(other)}",
+            f"All patients starting new treatment<br>N={len(risk)}",
             f"{same_cancer_label}<br>N={sum(same_cancer)}",
         ]
         colors = ["#374151", "#2dd4bf"]
     else:
-        hist_data = [list(other[pred_col])]
-        group_labels = [f"All patients<br>N={len(other)}"]
+        hist_data = [list(risk[pred_col])]
+        group_labels = [f"All patients starting new treatment<br>N={len(risk)}"]
         colors = ["#374151"]
 
     fig = ff.create_distplot(hist_data, group_labels, show_rug=False, show_hist=False, colors=colors)
@@ -87,7 +90,7 @@ def risk_dist_plot(mrn: int, df_output: pd.DataFrame, df_meta: pd.DataFrame, fon
         x=0.01,
         xanchor="left",
         subtitle=dict(
-            text="Risk percentile rank among the other patients assessed in the past month",
+            text="Risk percentile rank among other patients in the silent deployment baseline",
             font=dict(size=14 * font_scale, color=PLOT_MUTED_COLOR, family=PLOT_FONT_FAMILY),
         ),
     )

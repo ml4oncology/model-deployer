@@ -23,6 +23,13 @@ class Config:
         self.cancer_sites = pd.read_excel(f"{info_dir}/Cancer_Site_List.xlsx")
         self.cancer_site_list = self.cancer_sites["Cancer_Site"].tolist()
 
+        # regimens to exclude
+        epr2epic_remove_regimens = self.epr2epic_regimen.query('A2R == "Remove"').copy()
+        self.regimens_to_exclude = epr2epic_remove_regimens['Mapped_Name_All'].tolist()
+        renamed_regimens = self.epr_regimens.query("rename.notnull()").copy()
+        renamed_regimens.rename(columns={"regimen": "Mapped_Name_All"}, inplace=True)
+        renamed_regimens = renamed_regimens.merge(epr2epic_remove_regimens[['A2R', 'Mapped_Name_All']], on="Mapped_Name_All", how="left")
+        self.regimens_to_exclude += renamed_regimens['rename'].tolist()
 
 class Model:
     """Loads ML models and pipeline parameters
