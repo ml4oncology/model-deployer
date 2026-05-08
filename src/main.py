@@ -85,6 +85,8 @@ if __name__ == "__main__":
             feats['demographic'],
             thresholds,
             pred_fn=None,
+            data_dir=data_dir,
+            data_pull_date=data_pull_date,
         )
 
         inputs.append(res["model_input"])

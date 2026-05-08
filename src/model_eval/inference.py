@@ -2,12 +2,14 @@
 Module to generate predictions
 """
 
+import os
 import pickle
 from typing import Callable, TypeVar
 
 import numpy as np
 import pandas as pd
 from deployer.loader import Model
+from deployer.data_prep.constants import PROJ_NAME
 from ml_common.constants import CANCER_CODE_MAP
 from sklearn.base import BaseEstimator
 from dateutil.relativedelta import relativedelta
@@ -35,12 +37,41 @@ def _compute_demographic_info(df_demographic: pd.DataFrame,
 
     return df_model_output[['mrn', 'clinic_date', 'age', 'gender', 'cancer']].copy()
 
+
+def _add_visit_provider_name(
+    df_model_output: pd.DataFrame,
+    data_dir: str | None,
+    data_pull_date: str | None,
+) -> pd.DataFrame:
+    if data_dir is None or data_pull_date is None:
+        df_model_output["VISIT_PROVIDER_NAME"] = np.nan
+        return df_model_output
+
+    appointments_file = f"{data_dir}/{PROJ_NAME}_appointments_weekly_{data_pull_date}.csv"
+    if not os.path.exists(appointments_file):
+        df_model_output["VISIT_PROVIDER_NAME"] = np.nan
+        return df_model_output
+
+    appointments = pd.read_csv(
+        appointments_file,
+        usecols=["PATIENT_ID", "VISIT_PROVIDER_NAME"],
+    )
+    appointments = appointments.drop_duplicates(subset=["PATIENT_ID"])
+    appointments = appointments.rename(columns={"PATIENT_ID": "mrn"})
+    appointments["mrn"] = pd.to_numeric(appointments["mrn"], errors="coerce")
+    appointments = appointments.loc[appointments["mrn"].notna()].copy()
+    appointments["mrn"] = appointments["mrn"].astype(df_model_output["mrn"].dtype)
+
+    return df_model_output.merge(appointments, how="left", on=["mrn"])
+
 def get_model_output(
     model: Model,
     df: pd.DataFrame,
     demographic_info: pd.DataFrame, 
     thresholds: pd.DataFrame,
     pred_fn: Callable | None = None,
+    data_dir: str | None = None,
+    data_pull_date: str | None = None,
 ) -> dict[str, pd.DataFrame]:
     """
     TODO: set data_pull_day as the assessment date for treatment date anchor
@@ -71,6 +102,8 @@ def get_model_output(
         alarm_rate = row["alarm_rate"]
         pred_thresh = row["prediction_threshold"]
         model_output[f"ed_pred_alarm_{alarm_rate}"] = (model_output["ed_pred_prob"] > pred_thresh).astype(int)
+
+    model_output = _add_visit_provider_name(model_output, data_dir, data_pull_date)
 
     return {
         "model_input": model_input.reset_index(drop=True),
