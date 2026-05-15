@@ -59,6 +59,7 @@ if __name__ == "__main__":
     # if run_on_silent_deployment, do not generate dashboard
     if run_on_silent_deployment:
         disable_save_dashboard_png = True
+        subset_dashboard_patients = True
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -93,14 +94,17 @@ if __name__ == "__main__":
         outputs.append(res["model_output"])
         meta_data.append(res["demographic_info"])
         if subset_dashboard_patients:
-            dashboard_masks.append(
-                get_dashboard_keep_mask(
+            patients_mask = get_dashboard_keep_mask(
                     res["model_output"],
                     data_dir,
                     data_pull_date,
                     model.anchor,
                 )
-            )
+            dashboard_masks.append(patients_mask)
+            if not run_on_silent_deployment:
+                res["model_output"].loc[patients_mask == 1].reset_index(
+                    drop=True
+                ).to_csv(f"{output_dir}/ first_trt_{data_pull_date}.csv", index=False)
         else:
             dashboard_masks.append(pd.Series(1, index=res["model_output"].index, dtype=int))
 
@@ -126,15 +130,7 @@ if __name__ == "__main__":
     dashboard_out = out.loc[mask == 1].reset_index(drop=True)
 
     if run_on_silent_deployment:
-        # filter out patients from out
-        out['clinic_date'] = pd.to_datetime(out['clinic_date'])
-        out.sort_values(by=['clinic_date'], ascending=True, inplace=True)
-        # for every mrn, next_sched_trt_date, keep rows with the latest clinic_date
-        out = out.loc[out.groupby(['mrn', 'next_sched_trt_date'])['clinic_date'].idxmax()]
-        out.sort_values(by=['clinic_date'], ascending=True, inplace=True)
-        # for every mrn, regimen, keep row with earliest clinic date
-        out = out.loc[out.groupby(['mrn', 'regimen'])['clinic_date'].idxmin()]       
-        out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
+        dashboard_out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
 
     # Generate dashboard per patient
     if not disable_save_dashboard_png:
