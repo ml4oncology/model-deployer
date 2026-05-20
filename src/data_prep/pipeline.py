@@ -67,10 +67,32 @@ def get_data(
     model: Model,
     feats: dict[str, pd.DataFrame],
     data_pull_day: str | None = None,
-) -> pd.DataFrame:
+) -> dict[str, pd.DataFrame]:
+    tracked_drops = []
+    demographic_mrns = pd.Index(feats["demographic"]["mrn"].dropna().unique())
+    tracked_feat_keys = ["symptom", "treatment", "laboratory"]
+    feat_mrn_map = {
+        key: set(feats[key]["mrn"].dropna().unique()) if "mrn" in feats[key].columns else set()
+        for key in tracked_feat_keys
+    }
+
     # Combine Features
     df = combine_features(model.prep_cfg, feats, model.anchor)
-
+    combined_mrns = pd.Index(df["mrn"].dropna().unique())
+    missing_after_combine = demographic_mrns.difference(combined_mrns)
+    if not missing_after_combine.empty:
+        tracked_drops.append(
+            pd.DataFrame(
+                {
+                    "mrn": missing_after_combine,
+                    "reason": "no features availabe",
+                    "extra_info": [
+                        ",".join([key for key in tracked_feat_keys if mrn not in feat_mrn_map[key]])
+                        for mrn in missing_after_combine
+                    ],
+                }
+            )
+        )
     # Get changes between treatment sessions
     # NOTE: for clinic anchor, we are not keeping track of prev visits, so no changes are captured here...
     # TODO: We should simply get the prev changes since last lab visit, symptom survey, etc. and deprecate this function
@@ -95,7 +117,20 @@ def get_data(
     df = pd.concat([df, miss_feats], axis=1)
 
     # Filter out regimens to exclude
-    df = df[~df['regimen'].isin(config.regimens_to_exclude)]
+    regimen_info = df.loc[df["regimen"].isin(config.regimens_to_exclude), ["mrn", "regimen"]].copy()
+    mrns_before_regimen_filter = pd.Index(df["mrn"].dropna().unique())
+    df = df[~df["regimen"].isin(config.regimens_to_exclude)]
+    mrns_after_regimen_filter = pd.Index(df["mrn"].dropna().unique())
+    missing_after_regimen_filter = mrns_before_regimen_filter.difference(mrns_after_regimen_filter)
+    if not missing_after_regimen_filter.empty:
+        tracked_drops.append(
+            regimen_info.loc[regimen_info["mrn"].isin(missing_after_regimen_filter)]
+            .drop_duplicates(subset=["mrn", "regimen"])
+            .groupby("mrn", as_index=False)["regimen"]
+            .agg(lambda vals: ",".join(sorted(set(vals))))
+            .rename(columns={"regimen": "extra_info"})
+            .assign(reason="excluded regimen")[["mrn", "reason", "extra_info"]]
+        )
     df['dashboard_regimen'] = df['regimen']
 
     # Encode Regimens and Intent
@@ -125,7 +160,16 @@ def get_data(
     # Rename dashboard_regimen back to regimen
     df.rename(columns={"dashboard_regimen": "regimen"}, inplace=True)
 
-    return df
+    dropped_patients = (
+        pd.concat(tracked_drops, ignore_index=True)
+        if tracked_drops
+        else pd.DataFrame(columns=["mrn", "reason", "extra_info"])
+    )
+
+    return {
+        "data": df,
+        "dropped_patients": dropped_patients,
+    }
 
 
 def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
@@ -135,7 +179,6 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
     trt = feats["treatment"]
     lab = feats["laboratory"]
     erv = feats["emergency"]
-
     if anchor == "treatment":
         df = feats["treatment"].copy()
         df["assessment_date"] = df["treatment_date"]
@@ -146,7 +189,6 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
         df = combine_treatment_to_main_data(
             df, trt, "assessment_date", time_window=cfg["trt_lookback_window"], parallelize=False
         )
-
         if not all(trt.columns.isin(df.columns)):
             err_msg = "None of the patients had treatments within the lookback window from assessment date"
             raise ValueError(err_msg)

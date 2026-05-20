@@ -59,7 +59,6 @@ if __name__ == "__main__":
     # if run_on_silent_deployment, do not generate dashboard
     if run_on_silent_deployment:
         disable_save_dashboard_png = True
-        subset_dashboard_patients = True
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -78,7 +77,8 @@ if __name__ == "__main__":
             print(feats["error"])
             continue
 
-        data = get_data(config, model, feats, data_pull_date)
+        data_res = get_data(config, model, feats, data_pull_date)
+        data = data_res["data"]
 
         res = get_model_output(
             model,
@@ -101,12 +101,28 @@ if __name__ == "__main__":
                     model.anchor,
                 )
             dashboard_masks.append(patients_mask)
-            if not run_on_silent_deployment:
-                res["model_output"].loc[patients_mask == 1].reset_index(
-                    drop=True
-                ).to_csv(f"{output_dir}/ first_trt_{data_pull_date}.csv", index=False)
         else:
             dashboard_masks.append(pd.Series(1, index=res["model_output"].index, dtype=int))
+
+        new_trt_patients = get_dashboard_keep_mask(
+            None,
+            data_dir,
+            data_pull_date,
+            model.anchor,
+        )
+        new_trt_patients.to_csv(f"{output_dir}/first_trt_{data_pull_date}.csv", index=False)
+
+        master_mrns = pd.Index(feats["demographic"]["mrn"].dropna().unique())
+        final_mrns = pd.Index(res["model_output"]["mrn"].dropna().unique())
+        dropped_mrns = master_mrns.difference(final_mrns)
+        dropped_patients = pd.concat(
+            [data_res["dropped_patients"], res["dropped_patients"]],
+            ignore_index=True,
+        )
+        dropped_patients = dropped_patients[dropped_patients["mrn"].isin(dropped_mrns)].copy()
+        dropped_patients.insert(1, "clinic_date", pd.to_datetime(data_pull_date).strftime("%Y-%m-%d"))
+        dropped_patients = dropped_patients[["mrn", "clinic_date", "reason", "extra_info"]]
+        dropped_patients.to_csv(f"{output_dir}/dropped_patients_{data_pull_date}.csv", index=False)
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out = out.reset_index(drop=True)

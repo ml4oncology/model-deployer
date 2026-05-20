@@ -86,6 +86,22 @@ def get_model_output(
     # Drop any row that contains NaN => to work with RF
     # NOTE: mostly when ['height', 'weight', 'body_surface_area'] is missing
     # TODO: impute them instead of dropping
+    nan_mask = model_input.isna().any(axis=1)
+    dropped_nan_rows = model_input.loc[nan_mask]
+    dropped_nan_meta = model_output.loc[nan_mask, ["mrn"]].copy()
+    if dropped_nan_rows.empty:
+        dropped_patients = pd.DataFrame(columns=["mrn", "reason", "extra_info"])
+    else:
+        dropped_nan_meta["extra_info"] = dropped_nan_rows.isna().apply(
+            lambda row: ",".join(row.index[row].tolist()),
+            axis=1,
+        )
+        dropped_patients = (
+            dropped_nan_meta.groupby("mrn", as_index=False)["extra_info"]
+            .agg(lambda vals: ",".join(sorted({col for val in vals for col in val.split(",") if col})))
+        )
+        dropped_patients["reason"] = "missing features over lookback window"
+        dropped_patients = dropped_patients[["mrn", "reason", "extra_info"]]
 
     model_input = model_input.dropna()
     model_output = model_output.loc[model_input.index]
@@ -109,6 +125,7 @@ def get_model_output(
         "model_input": model_input.reset_index(drop=True),
         "model_output": model_output.reset_index(drop=True),
         "demographic_info": demog_df.reset_index(drop=True),
+        "dropped_patients": dropped_patients.reset_index(drop=True),
     }
 
 
