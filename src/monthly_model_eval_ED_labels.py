@@ -63,12 +63,13 @@ if __name__ == "__main__":
     model_dir = args.model_dir
 
     pred_file = f"output_{anchor}.csv"
+    pred_file_ED = f"{anchor}_pred_w_ED_labels.csv"
     perf_file = f"{anchor}_model_perf.csv"
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    postfix = "monthly_" #MONTHLY_POSTFIX_MAP[anchor] #"monthly_"
+    postfix = MONTHLY_POSTFIX_MAP[anchor] #"monthly_"
     date_col = DATE_COL_MAP[anchor]
     chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{monthly_pull_date}.csv"
     ED_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{monthly_pull_date}.csv"
@@ -86,6 +87,10 @@ if __name__ == "__main__":
     # Merge ED visit dates and true labels to Model prediction file
     ed_visit = get_emergency_room_data(ED_visits_file)
     df = get_ED_labels(df, ed_visit, lookahead_window=31)
+    
+    df["target_ED_31d"] = df["target_ED_31d"].astype(int)
+    pd.DataFrame(df).to_csv(f"{output_dir}/{pred_file_ED}", index=False)
+    
     # filter out cases where ED visit occurred on the same day
     df = df[(df["target_ED_date"] - df["assessment_date"]).dt.days != 0]
 
@@ -96,6 +101,7 @@ if __name__ == "__main__":
 
     print(f"=========== Anchored on {date_col} ====================")
 
+    '''
     event_col = "target_ED_date"
     label_col = "target_ED_31d"
     pred_col = "ed_pred_prob"
@@ -132,3 +138,4 @@ if __name__ == "__main__":
     ######################  Save Output ###########################
     pd.DataFrame(model_results).to_csv(f"{output_dir}/{perf_file}", index=False)
     print(f"Performance metrics saved to {perf_file}.")
+    '''

@@ -68,7 +68,7 @@ if __name__ == "__main__":
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
-    inputs, outputs, meta_data, dashboard_masks = [], [], [], []
+    inputs_raw, inputs, outputs, meta_data, dashboard_masks = [], [], [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor)
@@ -77,7 +77,7 @@ if __name__ == "__main__":
             print(feats["error"])
             continue
 
-        data = get_data(config, model, feats, data_pull_date)
+        data, data_raw = get_data(config, model, feats, data_pull_date)
 
         res = get_model_output(
             model,
@@ -88,6 +88,8 @@ if __name__ == "__main__":
             data_dir=data_dir,
             data_pull_date=data_pull_date,
         )
+        
+        inputs_raw.append(data_raw)
 
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
@@ -103,6 +105,14 @@ if __name__ == "__main__":
             )
         else:
             dashboard_masks.append(pd.Series(1, index=res["model_output"].index, dtype=int))
+            
+    inp_raw = pd.concat(inputs_raw, ignore_index=True, axis=0)
+    inp_raw = inp_raw.reset_index(drop=True)
+    inp_raw.to_parquet(f"{output_dir}/input_raw_{anchor}.parquet")
+
+    inp = pd.concat(inputs, ignore_index=True, axis=0)
+    inp = inp.reset_index(drop=True)
+    inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out = out.reset_index(drop=True)

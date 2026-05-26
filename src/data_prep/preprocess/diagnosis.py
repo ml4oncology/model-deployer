@@ -18,8 +18,12 @@ def get_demographic_data(diagnosis_data_file: str, anchor: str):
 def process_demographic_data(df: pd.DataFrame) -> pd.DataFrame:
     # combine patients with mutliple diagnoses into one row
     dtypes = df.dtypes
+    # Preserve boolean female column before groupby: bool("False") == True in Python,
+    # so casting from string back to bool via astype(dtypes) would corrupt male rows.
+    female_map = df.groupby("mrn")["female"].first()
     df = df.groupby("mrn").agg(lambda col: ",".join(col.astype(str).unique()))
     df = df.reset_index().astype(dtypes)
+    df["female"] = df["mrn"].map(female_map)
     return df
 
 

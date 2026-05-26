@@ -120,12 +120,13 @@ def get_data(
     df = df[cols]
 
     # Transform Data: Impute, Normalize, and Clip
+    df_noTransform = df.copy()
     df = model.prep.transform_data(df, one_hot_encode=False)
 
     # Rename dashboard_regimen back to regimen
     df.rename(columns={"dashboard_regimen": "regimen"}, inplace=True)
 
-    return df
+    return df, df_noTransform
 
 
 def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
