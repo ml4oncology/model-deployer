@@ -27,9 +27,9 @@ class Config:
         epr2epic_remove_regimens = self.epr2epic_regimen.query('A2R == "Remove"').copy()
         self.regimens_to_exclude = epr2epic_remove_regimens['Mapped_Name_All'].tolist()
         renamed_regimens = self.epr_regimens.query("rename.notnull()").copy()
-        renamed_regimens.rename(columns={"regimen": "Mapped_Name_All"}, inplace=True)
+        renamed_regimens.rename(columns={"rename": "Mapped_Name_All"}, inplace=True)
         renamed_regimens = renamed_regimens.merge(epr2epic_remove_regimens[['A2R', 'Mapped_Name_All']], on="Mapped_Name_All", how="left")
-        self.regimens_to_exclude += renamed_regimens['rename'].loc[renamed_regimens['A2R'] == "Remove"].tolist()
+        self.regimens_to_exclude += renamed_regimens['Mapped_Name_All'].loc[renamed_regimens['A2R'] == "Remove"].tolist()
 
 class Model:
     """Loads ML models and pipeline parameters
