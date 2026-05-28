@@ -1,0 +1,11 @@
+chemo_data_imputation:
+  height:
+    female_true: 160.0
+    female_false: 173.0
+  weight:
+    female_true: 61.4
+    female_false: 75.3
+  line_of_therapy: 1
+  cycle_number: 1
+  source: training_data_2024_09_01
+  notes: imputation values from training cohort

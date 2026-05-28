@@ -31,6 +31,13 @@ class Config:
         renamed_regimens = renamed_regimens.merge(epr2epic_remove_regimens[['A2R', 'Mapped_Name_All']], on="Mapped_Name_All", how="left")
         self.regimens_to_exclude += renamed_regimens['Mapped_Name_All'].loc[renamed_regimens['A2R'] == "Remove"].tolist()
 
+        # imputation values
+        data_prep_dir = Path(__file__).parent / "data_prep"
+        imputation_constants_path = data_prep_dir / "imputation_constants.yaml"
+
+        with open(imputation_constants_path) as file:
+            self.imputation_constants = yaml.safe_load(file)
+
 class Model:
     """Loads ML models and pipeline parameters
 
