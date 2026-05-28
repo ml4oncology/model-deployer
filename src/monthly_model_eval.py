@@ -68,7 +68,7 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    postfix = "monthly_" #MONTHLY_POSTFIX_MAP[anchor] #"monthly_"
+    postfix = MONTHLY_POSTFIX_MAP[anchor] #"monthly_"
     date_col = DATE_COL_MAP[anchor]
     chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{monthly_pull_date}.csv"
     ED_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{monthly_pull_date}.csv"
