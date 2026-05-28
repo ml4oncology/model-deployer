@@ -7,6 +7,7 @@ import os
 from datetime import timedelta
 
 import pandas as pd
+import numpy as np
 from deployer.data_prep.constants import DAILY_POSTFIX_MAP, FILL_VALS, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.diagnosis import get_demographic_data
@@ -15,13 +16,14 @@ from deployer.data_prep.preprocess.esas import get_symptoms_data
 from deployer.data_prep.preprocess.lab import get_lab_data
 from deployer.loader import Config, Model
 from make_clinical_dataset.epr.combine import (
-    add_engineered_features,
     combine_demographic_to_main_data,
     combine_event_to_main_data,
     combine_treatment_to_main_data,
     merge_closest_measurements,
 )
-from make_clinical_dataset.epr.engineer import get_change_since_prev_session
+from make_clinical_dataset.epr.engineer import (get_change_since_prev_session, 
+                                                get_visit_month_feature
+)
 from make_clinical_dataset.epr.prep import fill_missing_data_heuristically
 from make_clinical_dataset.shared import logger
 
@@ -56,7 +58,8 @@ def build_features(
     feats["emergency"] = get_emergency_room_data(ed_file)
 
     if anchor == "clinic":
-        mrns = feats["treatment"]["mrn"].unique()
+        # this is more complete than using treatment mrn
+        mrns = feats["demographic"]["mrn"].unique()
         feats["clinic"] = pd.DataFrame({"mrn": mrns, "clinic_date": data_pull_day})
 
     return feats
@@ -67,10 +70,32 @@ def get_data(
     model: Model,
     feats: dict[str, pd.DataFrame],
     data_pull_day: str | None = None,
-) -> pd.DataFrame:
-    # Combine Features
-    df = combine_features(model.prep_cfg, feats, model.anchor)
+) -> dict[str, pd.DataFrame]:
+    tracked_drops = []
+    demographic_mrns = pd.Index(feats["demographic"]["mrn"].dropna().unique())
+    tracked_feat_keys = ["symptom", "treatment", "laboratory"]
+    feat_mrn_map = {
+        key: set(feats[key]["mrn"].dropna().unique()) if "mrn" in feats[key].columns else set()
+        for key in tracked_feat_keys
+    }
 
+    # Combine Features
+    df = combine_features(model.prep_cfg, feats, model.anchor, config.imputation_constants)
+    combined_mrns = pd.Index(df["mrn"].dropna().unique())
+    missing_after_combine = demographic_mrns.difference(combined_mrns)
+    if not missing_after_combine.empty:
+        tracked_drops.append(
+            pd.DataFrame(
+                {
+                    "mrn": missing_after_combine,
+                    "reason": "no features availabe",
+                    "extra_info": [
+                        ",".join([key for key in tracked_feat_keys if mrn not in feat_mrn_map[key]])
+                        for mrn in missing_after_combine
+                    ],
+                }
+            )
+        )
     # Get changes between treatment sessions
     # NOTE: for clinic anchor, we are not keeping track of prev visits, so no changes are captured here...
     # TODO: We should simply get the prev changes since last lab visit, symptom survey, etc. and deprecate this function
@@ -95,7 +120,20 @@ def get_data(
     df = pd.concat([df, miss_feats], axis=1)
 
     # Filter out regimens to exclude
-    df = df[~df['regimen'].isin(config.regimens_to_exclude)]
+    regimen_info = df.loc[df["regimen"].isin(config.regimens_to_exclude), ["mrn", "regimen"]].copy()
+    mrns_before_regimen_filter = pd.Index(df["mrn"].dropna().unique())
+    df = df[~df["regimen"].isin(config.regimens_to_exclude)]
+    mrns_after_regimen_filter = pd.Index(df["mrn"].dropna().unique())
+    missing_after_regimen_filter = mrns_before_regimen_filter.difference(mrns_after_regimen_filter)
+    if not missing_after_regimen_filter.empty:
+        tracked_drops.append(
+            regimen_info.loc[regimen_info["mrn"].isin(missing_after_regimen_filter)]
+            .drop_duplicates(subset=["mrn", "regimen"])
+            .groupby("mrn", as_index=False)["regimen"]
+            .agg(lambda vals: ",".join(sorted(set(vals))))
+            .rename(columns={"regimen": "extra_info"})
+            .assign(reason="excluded regimen")[["mrn", "reason", "extra_info"]]
+        )
     df['dashboard_regimen'] = df['regimen']
 
     # Encode Regimens and Intent
@@ -125,33 +163,58 @@ def get_data(
     # Rename dashboard_regimen back to regimen
     df.rename(columns={"dashboard_regimen": "regimen"}, inplace=True)
 
-    return df
+    dropped_patients = (
+        pd.concat(tracked_drops, ignore_index=True)
+        if tracked_drops
+        else pd.DataFrame(columns=["mrn", "reason", "extra_info"])
+    )
+
+    return {
+        "data": df,
+        "dropped_patients": dropped_patients,
+    }
 
 
-def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
+def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imputation_constants: dict):
     """Combine the features into one unified dataset aligned on the specified anchor."""
     sym = feats["symptom"]
     dmg = feats["demographic"]
     trt = feats["treatment"]
     lab = feats["laboratory"]
     erv = feats["emergency"]
-
     if anchor == "treatment":
         df = feats["treatment"].copy()
         df["assessment_date"] = df["treatment_date"]
     elif anchor == "clinic":
         df = feats["clinic"].copy()
         df["assessment_date"] = df["clinic_date"]
+        
+        # NOTE: code below uses past treatment data for prediction.
+        # However, data pull for chemo is forward looking.
+        # trt is modified so that there is only one row per mrn
+        # Keeping this as combine_treatment_to_main_data also processes drug dosage; not being utilized currently anyway
+        # df = combine_treatment_to_main_data(
+        #     df, trt, "assessment_date", time_window=cfg["trt_lookback_window"], parallelize=False
+        # )
 
-        df = combine_treatment_to_main_data(
-            df, trt, "assessment_date", time_window=cfg["trt_lookback_window"], parallelize=False
-        )
+        # merge trt to df on 'mrn' column
+        df = df.merge(trt, on="mrn", how="left")
+
+        # check what happens to treatment_date column
+        # perform necessary imputation here, cycle number check this for patient with no records
+        # compute bsa after imputing height/weight
 
         if not all(trt.columns.isin(df.columns)):
             err_msg = "None of the patients had treatments within the lookback window from assessment date"
             raise ValueError(err_msg)
 
     df = combine_demographic_to_main_data(df, dmg, "assessment_date")
+    
+    # impute chemo data
+    # has to be after combining with demographic data since height, weight
+    # are imputed based on sex
+    df = impute_treatment_values(df, imputation_constants)
+
     if not sym.empty:
         df = merge_closest_measurements(
             df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window"]
@@ -172,6 +235,102 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str):
 
     return df
 
+def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFrame:
+    df = get_visit_month_feature(df, col=date_col)
+
+    return df
+
+def impute_treatment_values(
+    df: pd.DataFrame,
+    imputation_constants: dict
+) -> pd.DataFrame:
+    """
+    Impute treatment-related variables using predefined constants.
+
+    Rules
+    -----
+    - line_of_therapy:
+        * if NaN and intent == 'PALLIATIVE' -> use YAML value
+        * otherwise -> set to 0
+    - cycle_number:
+        * always impute NaN using YAML value
+    - height / weight:
+        * impute based on female == True/False
+    """
+
+    df = df.copy()
+
+    imp = imputation_constants["chemo_data_imputation"]
+
+    # ------------------------------------------------------------------
+    # line_of_therapy
+    # ------------------------------------------------------------------
+    palliative_mask = (
+        df["line_of_therapy"].isna()
+        & (df["intent"] == "PALLIATIVE")
+    )
+
+    non_palliative_mask = (
+        df["line_of_therapy"].isna()
+        & (df["intent"] != "PALLIATIVE")
+    )
+
+    df.loc[palliative_mask, "line_of_therapy"] = imp["line_of_therapy"]
+    df.loc[non_palliative_mask, "line_of_therapy"] = 0
+
+    # ------------------------------------------------------------------
+    # cycle_number
+    # ------------------------------------------------------------------
+    df["cycle_number"] = df["cycle_number"].fillna(
+        imp["cycle_number"]
+    )
+
+    # ------------------------------------------------------------------
+    # height
+    # ------------------------------------------------------------------
+    female_height = imp["height"]["female_true"]
+    male_height = imp["height"]["female_false"]
+
+    female_mask = (
+        df["height"].isna()
+        & (df["female"] == True)
+    )
+
+    male_mask = (
+        df["height"].isna()
+        & (df["female"] == False)
+    )
+
+    df.loc[female_mask, "height"] = female_height
+    df.loc[male_mask, "height"] = male_height
+
+    # ------------------------------------------------------------------
+    # weight
+    # ------------------------------------------------------------------
+    female_weight = imp["weight"]["female_true"]
+    male_weight = imp["weight"]["female_false"]
+
+    female_mask = (
+        df["weight"].isna()
+        & (df["female"] == True)
+    )
+
+    male_mask = (
+        df["weight"].isna()
+        & (df["female"] == False)
+    )
+
+    df.loc[female_mask, "weight"] = female_weight
+    df.loc[male_mask, "weight"] = male_weight
+
+    # ------------------------------------------------------------------
+    # body_surface_area
+    # ------------------------------------------------------------------
+    bsa_mask = df["body_surface_area"].isna()
+    df.loc[bsa_mask, "body_surface_area"] = (np.sqrt((df.loc[bsa_mask, "height"] 
+                                                      * df.loc[bsa_mask, "weight"]) / 3600))
+
+    return df
 
 def encode_regimens(df, regimen_data):
     regimen_map = dict(regimen_data[["Regimen", "Regimen_Rename"]].to_numpy())

@@ -77,7 +77,8 @@ if __name__ == "__main__":
             print(feats["error"])
             continue
 
-        data = get_data(config, model, feats, data_pull_date)
+        data_res = get_data(config, model, feats, data_pull_date)
+        data = data_res["data"]
 
         res = get_model_output(
             model,
@@ -93,16 +94,35 @@ if __name__ == "__main__":
         outputs.append(res["model_output"])
         meta_data.append(res["demographic_info"])
         if subset_dashboard_patients:
-            dashboard_masks.append(
-                get_dashboard_keep_mask(
+            patients_mask = get_dashboard_keep_mask(
                     res["model_output"],
                     data_dir,
                     data_pull_date,
                     model.anchor,
                 )
-            )
+            dashboard_masks.append(patients_mask)
         else:
             dashboard_masks.append(pd.Series(1, index=res["model_output"].index, dtype=int))
+
+        new_trt_patients = get_dashboard_keep_mask(
+            None,
+            data_dir,
+            data_pull_date,
+            model.anchor,
+        )
+        new_trt_patients.to_csv(f"{output_dir}/first_trt_{data_pull_date}.csv", index=False)
+
+        master_mrns = pd.Index(feats["demographic"]["mrn"].dropna().unique())
+        final_mrns = pd.Index(res["model_output"]["mrn"].dropna().unique())
+        dropped_mrns = master_mrns.difference(final_mrns)
+        dropped_patients = pd.concat(
+            [data_res["dropped_patients"], res["dropped_patients"]],
+            ignore_index=True,
+        )
+        dropped_patients = dropped_patients[dropped_patients["mrn"].isin(dropped_mrns)].copy()
+        dropped_patients.insert(1, "clinic_date", pd.to_datetime(data_pull_date).strftime("%Y-%m-%d"))
+        dropped_patients = dropped_patients[["mrn", "clinic_date", "reason", "extra_info"]]
+        dropped_patients.to_csv(f"{output_dir}/dropped_patients_{data_pull_date}.csv", index=False)
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out = out.reset_index(drop=True)
@@ -126,15 +146,7 @@ if __name__ == "__main__":
     dashboard_out = out.loc[mask == 1].reset_index(drop=True)
 
     if run_on_silent_deployment:
-        # filter out patients from out
-        out['clinic_date'] = pd.to_datetime(out['clinic_date'])
-        out.sort_values(by=['clinic_date'], ascending=True, inplace=True)
-        # for every mrn, next_sched_trt_date, keep rows with the latest clinic_date
-        out = out.loc[out.groupby(['mrn', 'next_sched_trt_date'])['clinic_date'].idxmax()]
-        out.sort_values(by=['clinic_date'], ascending=True, inplace=True)
-        # for every mrn, regimen, keep row with earliest clinic date
-        out = out.loc[out.groupby(['mrn', 'regimen'])['clinic_date'].idxmin()]       
-        out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
+        dashboard_out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
 
     # Generate dashboard per patient
     if not disable_save_dashboard_png:
