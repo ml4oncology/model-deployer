@@ -12,12 +12,22 @@ authors = [
     { name = "Wayne Uy", email = "WayneIsaac.Uy@uhn.ca" }
 ]
 dependencies = [
-    "xgboost==2.0.3",
     "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v2.0.1",
-    "playwright",
+    "matplotlib",
+    "numpy==1.26.4",
     "openpyxl",
+    "pandas",
+    "plotly",
+    "playwright==1.58.0",
+    "pyarrow",
+    "python-dateutil",
+    "PyYAML",
     "scikit-learn==1.3.2",
     "seismometer @ git+https://github.com/epic-open-source/seismometer.git",
+    "scipy",
+    "shap",
+    "tqdm",
+    "xgboost==2.0.3",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +41,10 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"deployer" = "src"}
+
+[tool.setuptools.package-data]
+"deployer.dashboard" = ["style.css"]
+"deployer.data_prep" = ["*.yaml"]
 
 [tool.mypy]
 ignore_missing_imports = true

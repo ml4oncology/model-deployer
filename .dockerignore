@@ -1,0 +1,17 @@
+.git
+.DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.pre-commit-config.yaml
+
+Data/
+Outputs/
+Archive/
+Figures/
+notebooks/
+dist/
+model_deployer.yml

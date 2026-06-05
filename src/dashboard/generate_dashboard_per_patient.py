@@ -55,7 +55,7 @@ def _build_dashboard_html(
         df_baseline,
         font_scale=font_scale,
     )
-    risk_dist_html = pio.to_html(fig, full_html=False, include_plotlyjs="cdn")
+    risk_dist_html = pio.to_html(fig, full_html=False, include_plotlyjs=True)
     percentile_html = create_percentile_overview(percentile_all, percentile_same, meta_row["cancer"])
 
     # --- Model overview ---
@@ -212,7 +212,7 @@ def save_dashboard_png(
                 font_scale=font_scale,
             )
 
-            page.set_content(html, wait_until="networkidle")
+            page.set_content(html, wait_until="load")
             out_path = dashboard_dir / f"dashboard_mrn_{mrn}_clinic_{clinic_date_str}.png"
             page.screenshot(path=str(out_path), full_page=True)
 

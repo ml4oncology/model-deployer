@@ -37,6 +37,54 @@ python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clin
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --no-subset-dashboard-patients
 ```
 
+# Docker container
+
+The Docker image bakes in the source code, `Infos/`, and `Models/`. The `Data/` and `Outputs/` directories are mounted when the container runs so that input data and generated files stay outside the image.
+
+## 1. Build the Docker archive
+
+```bash
+scripts/build-docker-archive.sh
+```
+
+By default, this creates a Linux AMD64 Docker archive tagged with today's date:
+
+```bash
+dist/model-deployer_YYYYMMDD_linux-amd64.docker.tar
+```
+
+For example:
+
+```bash
+dist/model-deployer_20260604_linux-amd64.docker.tar
+```
+
+## 2. Load, tag, and push to the container registry
+
+Replace `20260604` with the image date tag you built.
+
+```bash
+docker load --input dist/model-deployer_20260604_linux-amd64.docker.tar
+docker tag model-deployer:20260604 mira-services.uhn.ca:5000/model-deployer:20260604
+docker push mira-services.uhn.ca:5000/model-deployer:20260604
+```
+
+## 3. Run the silent deployment baseline with Docker
+
+Run this first because dashboard generation needs the silent deployment baseline file in `Outputs/`.
+
+```bash
+scripts/run-silent-deployment.sh mira-services.uhn.ca:5000/model-deployer:20260604
+```
+
+## 4. Run the daily dashboard with Docker
+
+Pass the daily pull date in `YYYYMMDD` format.
+
+```bash
+scripts/run-today.sh mira-services.uhn.ca:5000/model-deployer:20260604 20260604
+```
+
 # Project Organization
 ```
 ├── src             <- The source code
