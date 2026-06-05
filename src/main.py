@@ -1,5 +1,6 @@
 import argparse
 import os
+from pathlib import Path
 import warnings
 
 import pandas as pd
@@ -90,6 +91,9 @@ if __name__ == "__main__":
             data_pull_date=data_pull_date,
         )
 
+        # store processed data
+        res["model_input"].to_csv(Path(output_dir) / f"input_{data_pull_date}_{anchor}.csv", index_label='idx')
+
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
         meta_data.append(res["demographic_info"])
@@ -141,7 +145,7 @@ if __name__ == "__main__":
     dashboard_meta = meta.loc[mask == 1].reset_index(drop=True)
 
     out = out.merge(meta[['mrn', 'clinic_date', 'cancer']], on=['mrn', 'clinic_date'], how='left')
-    out.to_csv(f"{output_dir}/output_{anchor}.csv", index=False)
+    out.to_csv(f"{output_dir}/output_{start_date}_{anchor}.csv", index_label='idx')
 
     dashboard_out = out.loc[mask == 1].reset_index(drop=True)
 
