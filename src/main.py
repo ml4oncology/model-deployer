@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
     inp = pd.concat(inputs, ignore_index=True, axis=0)
     inp = inp.reset_index(drop=True)
-    inp.to_parquet(f"{output_dir}/input_{anchor}.parquet")
+    inp.to_parquet(f"{output_dir}/input_{start_date}_{end_date}_{anchor}.parquet")
 
     meta = pd.concat(meta_data, ignore_index=True, axis=0)
     meta = meta.reset_index(drop=True)
@@ -145,7 +145,7 @@ if __name__ == "__main__":
     dashboard_meta = meta.loc[mask == 1].reset_index(drop=True)
 
     out = out.merge(meta[['mrn', 'clinic_date', 'cancer']], on=['mrn', 'clinic_date'], how='left')
-    out.to_csv(f"{output_dir}/output_{start_date}_{anchor}.csv", index_label='idx')
+    out.to_csv(f"{output_dir}/output_{start_date}_{end_date}_{anchor}.csv", index_label='idx')
 
     dashboard_out = out.loc[mask == 1].reset_index(drop=True)
 

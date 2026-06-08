@@ -38,26 +38,35 @@ def _compute_demographic_info(df_demographic: pd.DataFrame,
     return df_model_output[['mrn', 'clinic_date', 'age', 'gender', 'cancer']].copy()
 
 
-def _add_visit_provider_name(
+def _add_appointment_info(
     df_model_output: pd.DataFrame,
     data_dir: str | None,
     data_pull_date: str | None,
 ) -> pd.DataFrame:
     if data_dir is None or data_pull_date is None:
         df_model_output["VISIT_PROVIDER_NAME"] = np.nan
+        df_model_output["patient_name"] = np.nan
         return df_model_output
 
     appointments_file = f"{data_dir}/{PROJ_NAME}_appointments_weekly_{data_pull_date}.csv"
     if not os.path.exists(appointments_file):
         df_model_output["VISIT_PROVIDER_NAME"] = np.nan
+        df_model_output["patient_name"] = np.nan
         return df_model_output
 
     appointments = pd.read_csv(
         appointments_file,
-        usecols=["PATIENT_ID", "VISIT_PROVIDER_NAME"],
+        usecols=["PATIENT_ID", "PAT_NAME", "VISIT_PROVIDER_NAME"],
     )
     appointments = appointments.drop_duplicates(subset=["PATIENT_ID"])
-    appointments = appointments.rename(columns={"PATIENT_ID": "mrn"})
+    appointments = appointments.rename(columns={"PATIENT_ID": "mrn", "PAT_NAME": "patient_name"})
+    patient_names = appointments["patient_name"].astype("string").str.split(",", n=1, expand=True)
+    formatted_names = patient_names[0].str.strip()
+    if 1 in patient_names:
+        formatted_names = (
+            patient_names[1].str.strip() + " " + patient_names[0].str.strip()
+        ).where(patient_names[1].notna(), formatted_names)
+    appointments["patient_name"] = formatted_names.where(formatted_names.notna(), np.nan)
     appointments["mrn"] = pd.to_numeric(appointments["mrn"], errors="coerce")
     appointments = appointments.loc[appointments["mrn"].notna()].copy()
     appointments["mrn"] = appointments["mrn"].astype(df_model_output["mrn"].dtype)
@@ -119,7 +128,7 @@ def get_model_output(
         pred_thresh = row["prediction_threshold"]
         model_output[f"ed_pred_alarm_{alarm_rate}"] = (model_output["ed_pred_prob"] > pred_thresh).astype(int)
 
-    model_output = _add_visit_provider_name(model_output, data_dir, data_pull_date)
+    model_output = _add_appointment_info(model_output, data_dir, data_pull_date)
 
     return {
         "model_input": model_input.reset_index(drop=True),
