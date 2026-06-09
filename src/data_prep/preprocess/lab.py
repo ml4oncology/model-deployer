@@ -5,7 +5,6 @@ Module to preprocess laboratory test data, which includes hematology and biochem
 import re
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
 from make_clinical_dataset.shared.constants import OBS_MAP
@@ -28,12 +27,24 @@ def get_lab_data(hema_data_file, biochem_data_file, anchor):
     return lab
 
 
-def replace_less_than(value: str) -> float | str:
-    """Replace '<number' with number/2"""
-    if isinstance(value, str) and value.startswith("<"):
-        # Extract the number after '<'
-        number = int(re.findall(r"\d+", value)[0])
-        return number / 2
+def normalize_lab_value(value: str) -> float | str:
+    """Normalize a lab value string to a float where possible.
+
+    - '<number'  → number / 2  (e.g. '<5' → 2.5)
+    - '>number'  → number      (e.g. '>1000000' → 1000000.0)
+    - Anything else non-numeric → left unchanged (will be coerced to NaN later)
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if stripped.startswith("<"):
+        numbers = re.findall(r"[\d.]+", stripped)
+        if numbers:
+            return float(numbers[0]) / 2
+    elif stripped.startswith(">"):
+        numbers = re.findall(r"[\d.]+", stripped)
+        if numbers:
+            return float(numbers[0])
     return value
 
 
@@ -49,29 +60,12 @@ def process_lab_data(df):
     # make each observation name into a new column
     df = df.pivot(index=["patientId", "obs_date"], columns="obs_name", values="obs_value")
 
-    # apply the function to replace any '<' entries with half e.g. "<5" with 2.5
+    # normalize inequality entries (e.g. '<5' → 2.5, '>1000' → 1000.0) then
+    # coerce any remaining non-numeric strings to NaN — handles unknown entries
+    # automatically without requiring a hardcoded blocklist
     for col in df.columns:
-        df[col] = df[col].apply(replace_less_than)
-
-    # replace non-numerical entries
-    mask = df.isin(
-        [
-            ".",
-            "Platelet clumping present, unable to provide count.",
-            "Insufficient quantity for testing. Please re-order test and send new sample.",
-            "Unable to perform: Lost in transit.",
-            ">10.0",  # TODO: replace with some other numerical entry?
-            ">1000", # TODO: replace with some other numerical entry?
-            "Unable to obtain result due to the interference of severe hemolysis.",
-            "Platelets clumped, unable to count. A Sodium Citrate (light blue) tube is required. Please order CITRATED PLATELET COUNT. The platelet result will be reported for the CITRATED PLATELET COUNT procedure when available.",
-            "Sample rejected due to severe hemolysis.",
-        ]
-    )
-    df[mask] = np.nan  # None
-
-    # convert to numeric data type
-    # df = df.apply(pd.to_numeric, errors='coerce')
-    df = df.astype(float)  # use this one instead to see what sort of non-numerical entries are present
+        df[col] = df[col].apply(normalize_lab_value)
+    df = df.apply(pd.to_numeric, errors="coerce")
 
     df.columns.name = None
     return df.reset_index()
