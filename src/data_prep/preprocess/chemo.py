@@ -35,9 +35,9 @@ def get_treatment_data(
     df = clean_treatment_data(df, config)
 
     if mode == "prediction":
-        df = process_treatment_data_pred(df, anchor, data_pull_day)
+        df = process_treatment_data_pred(df, anchor, config, data_pull_day)
     elif mode == "evaluation":
-        df = process_treatment_data_eval(df, anchor, data_pull_day)
+        df = process_treatment_data_eval(df, anchor, config, data_pull_day)
   
     return df
 
@@ -68,7 +68,7 @@ def clean_treatment_data(df: pd.DataFrame, config: Config) -> pd.DataFrame:
     return df
 
 
-def process_treatment_data_pred(df: pd.DataFrame, anchor: str, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
+def process_treatment_data_pred(df: pd.DataFrame, anchor: str, config: Config, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
     """
     Process treatment data: sort, fill, filter, merge, and compute features.
     """
@@ -78,7 +78,7 @@ def process_treatment_data_pred(df: pd.DataFrame, anchor: str, data_pull_day: pd
     clinic_eval = anchor == "clinic" and data_pull_day is not None
     if clinic_eval:
         # Get next scheduled treatment dates (within 5 days of clinic visit)
-        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=5))
+        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=config["trt_lookahead_window"]))
         next_sched_trt_date = df[mask].groupby("mrn")["tx_sched_date"].first()
     
     # drop rows with missing tx_sched_date
@@ -128,7 +128,7 @@ def process_treatment_data_pred(df: pd.DataFrame, anchor: str, data_pull_day: pd
 
     return df
 
-def process_treatment_data_eval(df: pd.DataFrame, anchor: str, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
+def process_treatment_data_eval(df: pd.DataFrame, anchor: str, config: Config, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
     """
     Process treatment data: sort, fill, filter, merge, and compute features.
     """
@@ -138,7 +138,7 @@ def process_treatment_data_eval(df: pd.DataFrame, anchor: str, data_pull_day: pd
     clinic_eval = anchor == "clinic" and data_pull_day is not None
     if clinic_eval:
         # Get next scheduled treatment dates (within 5 days of clinic visit)
-        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=5))
+        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=config["trt_lookahead_window"]))
         next_sched_trt_date = df[mask].groupby("mrn")["tx_sched_date"].first()
 
     # Filter treatment sessions before data pull date
