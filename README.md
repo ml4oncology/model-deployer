@@ -13,6 +13,14 @@ pre-commit install
 mypy --install-types
 ```
 
+# Please read before running
+In the home directory, subdirectories `Models`, `Infos`, and `Data` needs to be present. 
+- `Models` contains pickle files of the deployment model
+- `Infos` contains dictionary mappings as well as a subdirectory `Prep` which contains the config files, data pre-processing modules, and data used to train the deployment model.
+- `Data` contains live EHR-pulled data everyday during deployment.
+
+A2R deployment model version 1 was trained using [Preduce v0.1.1](https://github.com/ml4oncology/PredUCE/blob/78e7b064ee5fc91dd913217b67febe4dbab0fa22/notebooks/acu/2.%20Clinic-Centered-Emerg-Pred.ipynb).
+
 # Running the dashboard pipeline
 ```bash
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
