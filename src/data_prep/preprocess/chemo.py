@@ -16,6 +16,7 @@ def get_treatment_data(
     data_pull_day: pd.Timestamp | None = None,
     anchor: str = "treatment",
     mode: str = "prediction",
+    lookahead_window: int = 5
 ) -> pd.DataFrame:
     """
     Load and preprocess chemotherapy treatment data.
@@ -25,7 +26,8 @@ def get_treatment_data(
         config (Config): Configuration object containing EPR regimens and mapping.
         data_pull_day (str | None): Date of data pull.
         anchor (str): Anchor type, either 'treatment' or 'clinic'.
-        mode (str): Mode of operation, either 'prediction' or 'evaluation'. 
+        mode (str): Mode of operation, either 'prediction' or 'evaluation'.
+        lookahead_window (int): Lookahead window for treatment data.
     Returns:
         pd.DataFrame: Preprocessed treatment data.
     """
@@ -35,10 +37,10 @@ def get_treatment_data(
     df = clean_treatment_data(df, config)
 
     if mode == "prediction":
-        df = process_treatment_data_pred(df, anchor, config, data_pull_day)
+        df = process_treatment_data_pred(df, anchor, lookahead_window, data_pull_day)
     elif mode == "evaluation":
-        df = process_treatment_data_eval(df, anchor, config, data_pull_day)
-  
+        df = process_treatment_data_eval(df, anchor, lookahead_window, data_pull_day)
+
     return df
 
 
@@ -68,7 +70,7 @@ def clean_treatment_data(df: pd.DataFrame, config: Config) -> pd.DataFrame:
     return df
 
 
-def process_treatment_data_pred(df: pd.DataFrame, anchor: str, config: Config, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
+def process_treatment_data_pred(df: pd.DataFrame, anchor: str, lookahead_window: int, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
     """
     Process treatment data: sort, fill, filter, merge, and compute features.
     """
@@ -78,7 +80,7 @@ def process_treatment_data_pred(df: pd.DataFrame, anchor: str, config: Config, d
     clinic_eval = anchor == "clinic" and data_pull_day is not None
     if clinic_eval:
         # Get next scheduled treatment dates (within 5 days of clinic visit)
-        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=config["trt_lookahead_window"]))
+        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=lookahead_window))
         next_sched_trt_date = df[mask].groupby("mrn")["tx_sched_date"].first()
     
     # drop rows with missing tx_sched_date
@@ -128,7 +130,7 @@ def process_treatment_data_pred(df: pd.DataFrame, anchor: str, config: Config, d
 
     return df
 
-def process_treatment_data_eval(df: pd.DataFrame, anchor: str, config: Config, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
+def process_treatment_data_eval(df: pd.DataFrame, anchor: str, lookahead_window: int, data_pull_day: pd.Timestamp | None = None) -> pd.DataFrame:
     """
     Process treatment data: sort, fill, filter, merge, and compute features.
     """
@@ -138,7 +140,7 @@ def process_treatment_data_eval(df: pd.DataFrame, anchor: str, config: Config, d
     clinic_eval = anchor == "clinic" and data_pull_day is not None
     if clinic_eval:
         # Get next scheduled treatment dates (within 5 days of clinic visit)
-        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=config["trt_lookahead_window"]))
+        mask = df["tx_sched_date"].between(data_pull_day, data_pull_day + pd.Timedelta(days=lookahead_window))
         next_sched_trt_date = df[mask].groupby("mrn")["tx_sched_date"].first()
 
     # Filter treatment sessions before data pull date

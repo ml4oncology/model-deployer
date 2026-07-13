@@ -63,6 +63,9 @@ if __name__ == "__main__":
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+    
+    if not os.path.exists(f"{output_dir}/interim"):
+        os.makedirs(f"{output_dir}/interim")
 
     config = Config(info_dir=info_dir)
     model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, name="ED_visit")
@@ -72,7 +75,7 @@ if __name__ == "__main__":
     inputs, outputs, meta_data, dashboard_masks = [], [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
-        feats = build_features(config, data_dir, data_pull_date, model.anchor)
+        feats = build_features(config, data_dir, data_pull_date, model.anchor, model.prep_cfg)
 
         if "error" in feats:
             print(feats["error"])
@@ -98,6 +101,7 @@ if __name__ == "__main__":
         outputs.append(res["model_output"])
         meta_data.append(res["demographic_info"])
         if subset_dashboard_patients:
+            # get mask for first treatment patients for filtering later
             patients_mask = get_dashboard_keep_mask(
                     res["model_output"],
                     data_dir,
@@ -108,13 +112,14 @@ if __name__ == "__main__":
         else:
             dashboard_masks.append(pd.Series(1, index=res["model_output"].index, dtype=int))
 
+        # this saves information about patients undergoing first treatment during given day
         new_trt_patients = get_dashboard_keep_mask(
             None,
             data_dir,
             data_pull_date,
             model.anchor,
         )
-        new_trt_patients.to_csv(f"{output_dir}/first_trt_{data_pull_date}.csv", index=False)
+        new_trt_patients.to_csv(f"{output_dir}/interim/first_trt_{data_pull_date}.csv", index=False)
 
         master_mrns = pd.Index(feats["demographic"]["mrn"].dropna().unique())
         final_mrns = pd.Index(res["model_output"]["mrn"].dropna().unique())
@@ -126,7 +131,7 @@ if __name__ == "__main__":
         dropped_patients = dropped_patients[dropped_patients["mrn"].isin(dropped_mrns)].copy()
         dropped_patients.insert(1, "clinic_date", pd.to_datetime(data_pull_date).strftime("%Y-%m-%d"))
         dropped_patients = dropped_patients[["mrn", "clinic_date", "reason", "extra_info"]]
-        dropped_patients.to_csv(f"{output_dir}/dropped_patients_{data_pull_date}.csv", index=False)
+        dropped_patients.to_csv(f"{output_dir}/interim/dropped_patients_{data_pull_date}.csv", index=False)
 
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out = out.reset_index(drop=True)
