@@ -49,7 +49,10 @@ class Model:
         self.anchor = anchor
         self.name = name
 
-        with open(f"{prep_dir}/config.yaml") as file:
+        data_prep_dir = Path(__file__).parent / "data_prep"
+        data_processing_constants = data_prep_dir / "config.yaml"
+
+        with open(data_processing_constants) as file:
             self.prep_cfg = yaml.safe_load(file)
 
         # Emergency Department Visit
@@ -65,5 +68,5 @@ class Model:
         # column ordering needs to match
         # TODO: use the scaler, imputer, etc's pre-existing columns in ml-common.prep
         self.prep.norm_cols = self.prep.scaler.feature_names_in_
-        self.prep.imp.impute_cols["mean"] = self.prep.imp.imputer["mean"].feature_names_in_
+        self.prep.imp.impute_cols["mean"] = self.prep.imp.imputer["mean"].feature_names_in_ if self.prep.imp.imputer["mean"] is not None else []
         self.prep.imp.impute_cols["most_frequent"] = self.prep.imp.imputer["most_frequent"].feature_names_in_

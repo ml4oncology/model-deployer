@@ -31,7 +31,7 @@ logger.setLevel(logging.WARNING)
 
 
 def build_features(
-    config: Config, data_dir: str, data_pull_day: str | None = None, anchor: str = "clinic"
+    config: Config, data_dir: str, data_pull_day: str | None = None, anchor: str = "clinic", model_constants: dict = {}
 ) -> dict[str, pd.DataFrame]:
     postfix = DAILY_POSTFIX_MAP[anchor]
     biochem_file = f"{data_dir}/{PROJ_NAME}_biochemistry_{postfix}{data_pull_day}.csv"
@@ -53,7 +53,12 @@ def build_features(
     feats = {}
     feats["symptom"] = get_symptoms_data(esas_file)
     feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
-    feats["treatment"] = get_treatment_data(chemo_file, config, data_pull_day, anchor)
+    feats["treatment"] = get_treatment_data(chemo_file, 
+                                            config, 
+                                            data_pull_day, 
+                                            anchor,
+                                            "prediction", 
+                                            model_constants["trt_lookahead_window"])
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
     feats["emergency"] = get_emergency_room_data(ed_file)
 
