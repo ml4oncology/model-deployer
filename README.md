@@ -15,7 +15,18 @@ mypy --install-types
 
 # Please read before running
 In the home directory, subdirectories `Models`, `Infos`, and `Data` needs to be present. 
-- `Models` contains pickle files of the deployment model
+- `Models` contains pickle files of the deployment model and a `model_manifest.yaml` that maps model roles to file names:
+  ```yaml
+  clinic:
+    model: <model_pickle_filename_without_.pkl>
+    prep: <prep_pickle_filename_without_.pkl>
+    orig_x: <parquet_filename>
+
+  treatment:
+    model: <model_pickle_filename_without_.pkl>
+    prep: <prep_pickle_filename_without_.pkl>
+  ```
+  When switching to a new model, place the new files in `Models/` and `Infos/Prep/`, then update the filenames in `model_manifest.yaml`.
 - `Infos` contains dictionary mappings as well as a subdirectory `Prep` which contains the config files, data pre-processing modules, and data used to train the deployment model.
 - `Data` contains live EHR-pulled data everyday during deployment.
 

@@ -55,14 +55,15 @@ class Model:
         with open(data_processing_constants) as file:
             self.prep_cfg = yaml.safe_load(file)
 
+        # Load model file names from manifest
+        with open(f"{model_dir}/model_manifest.yaml") as f:
+            manifest = yaml.safe_load(f)[anchor]
+
         # Emergency Department Visit
-        if self.anchor == "treatment":
-            self.prep = load_pickle(prep_dir, "prep_ED_visit_trt_anchored")
-            self.model = load_pickle(model_dir, "RF_ED_visit_trt_anchored")
-        elif self.anchor == "clinic":
-            self.prep = load_pickle(prep_dir, "prep_ED_visit_clinic_anchored")
-            self.model = load_pickle(model_dir, "XGB_ED_visit_clinic_anchored")
-            self.orig_x = pd.read_parquet(f"{prep_dir}/X_clinic_anchored.parquet.gzip")
+        self.prep = load_pickle(prep_dir, manifest["prep"])
+        self.model = load_pickle(model_dir, manifest["model"])
+        if "orig_x" in manifest:
+            self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
 
         # column ordering needs to match
