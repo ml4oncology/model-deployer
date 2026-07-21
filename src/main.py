@@ -75,7 +75,7 @@ if __name__ == "__main__":
     inputs, outputs, meta_data, dashboard_masks = [], [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
-        feats = build_features(config, data_dir, data_pull_date, model.anchor, model.prep_cfg)
+        feats = build_features(config, data_dir, data_pull_date, model.anchor, model.prep_cfg, model_features=model.model_features)
 
         if "error" in feats:
             print(feats["error"])

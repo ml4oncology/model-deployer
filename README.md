@@ -45,6 +45,13 @@ python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clin
 python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --no-subset-dashboard-patients
 ```
 
+# Running the evaluation pipeline
+```bash
+python src/monthly_model_eval.py --start-date <start_date> --end-date <end_date> --monthly-pull-date <monthly_pull_date> --prediction-file-path <path_to_predictions>
+```
+
+`<monthly_pull_date>` refers to the monthly chemo file pull date. The monthly chemo file pulls are cumulative. Make sure to choose a date that is 1 month after `<end_date>` if you are predicting the risk of ED visit in 1 month.  
+
 # Docker container
 
 The Docker image bakes in the source code, `Infos/`, and `Models/`. The `Data/` and `Outputs/` directories are mounted when the container runs so that input data and generated files stay outside the image.

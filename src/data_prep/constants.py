@@ -35,5 +35,5 @@ DAILY_POSTFIX_MAP = {
 
 MONTHLY_POSTFIX_MAP = {
     "treatment": "monthly_",  # treatment anchored files named as eg. AIM2REDUCE_hematology_monthly_20241104
-    "clinic": "weekly_monthly_",  # clinic anchored files named as eg. AIM2REDUCE_hematology_weekly_monthly_20241104
+    "clinic": "monthly_",  # clinic anchored files named as eg. AIM2REDUCE_hematology_monthly_20241104
 }
