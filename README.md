@@ -39,7 +39,11 @@ python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250
 ```
 
 Dashboard prerequisite:
-- Dashboard generation uses the silent deployment baseline file. To create that baseline, first run `python src/main.py --start-date [start_date] --end-date [end_date] --model-anchor clinic --run-on-silent-deployment True`, where `[start_date]` and `[end_date]` are the silent deployment dates.
+- Dashboard generation uses the silent deployment baseline file. To create that baseline, first run 
+```bash
+python src/main.py --start-date [start_date] --end-date [end_date] --model-anchor clinic --run-on-silent-deployment True
+``` 
+where `[start_date]` and `[end_date]` are the silent deployment dates.
 - If you are not generating that silent deployment baseline first, run `src/main.py` with `--disable-save-dashboard-png` to avoid dashboard generation errors.
 
 Optional dashboard arguments:
