@@ -4,8 +4,11 @@ import warnings
 
 import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 import numpy as np
 import pandas as pd
+from scipy.stats.contingency import odds_ratio
+from sklearn.calibration import calibration_curve
 from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
@@ -58,12 +61,111 @@ def filter_intent_to_treat(df, chemo_file, config, anchor, date_col):
         & (fwd_merge["actual_regimen"] == fwd_merge["regimen"])
         # ED visit occurred on or before treatment date (keep if no ED date)
         & (fwd_merge["target_ED_date"].isna() | (fwd_merge["target_ED_date"] > fwd_merge["actual_trt_date"]))
-        # Visit date equals treatment date (treatment day, not pre-treatment)
-        & (fwd_merge[date_col] != fwd_merge["actual_trt_date"])
+        # # Visit date equals treatment date (treatment day, not pre-treatment)
+        # & (fwd_merge[date_col] != fwd_merge["actual_trt_date"])
     )
 
     return df.loc[good].copy()
 
+
+def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_31d"):
+    df = df.copy()
+    df["quartile"] = pd.qcut(df[prob_col], q=4, labels=["Q1", "Q2", "Q3", "Q4"])
+
+    counts = df.groupby("quartile")[outcome_col].agg(events="sum", n="count")
+    counts["non_events"] = counts["n"] - counts["events"]
+
+    ref_events = counts.loc["Q1", "events"]
+    ref_non_events = counts.loc["Q1", "non_events"]
+
+    results = []
+    for q in ["Q2", "Q3", "Q4"]:
+        exposed_cases = counts.loc[q, "events"]
+        exposed_noncases = counts.loc[q, "non_events"]
+        unexposed_cases = ref_events
+        unexposed_noncases = ref_non_events
+
+        table = np.array([
+            [exposed_cases, unexposed_cases],
+            [exposed_noncases, unexposed_noncases]
+        ])
+
+        res = odds_ratio(table, kind="conditional")
+        ci = res.confidence_interval(confidence_level=0.95)
+
+        results.append({
+            "quartile": q,
+            "odds_ratio": res.statistic,
+            "ci_low": ci.low,
+            "ci_high": ci.high,
+            "n": counts.loc[q, "n"],
+            "events": exposed_cases,
+        })
+
+    results.insert(0, {
+        "quartile": "Q1 (ref)", "odds_ratio": 1.0,
+        "ci_low": np.nan, "ci_high": np.nan,
+        "n": counts.loc["Q1", "n"], "events": ref_events,
+    })
+
+    return pd.DataFrame(results), counts
+
+
+def plot_odds_ratios(results_df, title="Odds Ratio of ED Visit by Predicted Risk Quartile"):
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    quartiles = results_df["quartile"]
+    ors = results_df["odds_ratio"]
+
+    lower_err = (ors - results_df["ci_low"]).fillna(0)
+    upper_err = (results_df["ci_high"] - ors).fillna(0)
+
+    bars = ax.bar(quartiles, ors, color="#4C72B0", edgecolor="black")
+    ax.errorbar(quartiles, ors, yerr=[lower_err, upper_err],
+                fmt="none", ecolor="black", capsize=5, linewidth=1.2)
+
+    ax.axhline(1.0, color="red", linestyle="--", linewidth=1, label="OR = 1 (reference)")
+
+    ax.set_yscale("log")
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:g}"))
+
+    ax.set_ylabel("Odds Ratio (95% CI, log scale)")
+    ax.set_xlabel("Predicted Risk Quartile")
+    ax.set_title(title)
+
+    for bar, or_val in zip(bars, ors):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.05,
+                f"{or_val:.2f}", ha="center", va="bottom", fontsize=9)
+
+    ax.legend()
+    plt.tight_layout()
+    return fig
+
+
+def plot_calibration(df, prob_col="ed_pred_prob", outcome_col="target_ED_31d",
+                     n_bins=10, strategy="quantile"):
+    y_true = df[outcome_col].values
+    y_prob = df[prob_col].values
+
+    prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins, strategy=strategy)
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 8),
+                                   gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
+
+    ax1.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Perfect calibration")
+    ax1.plot(prob_pred, prob_true, marker="o", color="#4C72B0", label="Model")
+    ax1.set_ylabel("Observed frequency")
+    ax1.set_title("Calibration Plot (Reliability Diagram)")
+    ax1.legend()
+    ax1.set_xlim(0, 1)
+    ax1.set_ylim(0, 1)
+
+    ax2.hist(y_prob, bins=30, color="#4C72B0", edgecolor="black", alpha=0.7)
+    ax2.set_xlabel("Predicted probability")
+    ax2.set_ylabel("Count")
+
+    plt.tight_layout()
+    return fig
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -217,6 +319,21 @@ if __name__ == "__main__":
     auroc_fig.savefig(f"{output_dir}/{auroc_plot_file}", bbox_inches="tight", dpi=150)
     plt.close(auroc_fig)
     print(f"AUROC plot saved to {auroc_plot_file}.")
+
+    ######################  Calibration & Odds Ratio Plots ###########################
+
+    cal_fig = plot_calibration(df, prob_col=pred_col, outcome_col=label_col)
+    cal_plot_file = f"{anchor}_calibration.png"
+    cal_fig.savefig(f"{output_dir}/{cal_plot_file}", bbox_inches="tight", dpi=150)
+    plt.close(cal_fig)
+    print(f"Calibration plot saved to {cal_plot_file}.")
+
+    or_df, quartile_counts = quartile_odds_ratios(df, prob_col=pred_col, outcome_col=label_col)
+    or_fig = plot_odds_ratios(or_df)
+    or_plot_file = f"{anchor}_odds_ratios.png"
+    or_fig.savefig(f"{output_dir}/{or_plot_file}", bbox_inches="tight", dpi=150)
+    plt.close(or_fig)
+    print(f"Odds ratio plot saved to {or_plot_file}.")
 
     ######################  Save Output ###########################
     pd.DataFrame(model_results).to_csv(f"{output_dir}/{perf_file}", index=False)
