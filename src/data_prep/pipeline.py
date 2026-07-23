@@ -143,7 +143,7 @@ def get_data(
     df['dashboard_regimen'] = df['regimen']
 
     # Encode Regimens and Intent
-    df = encode_regimens(df, config.gi_regimens)
+    df = encode_regimens(df, model.model_features)
     df = encode_primary_sites(df, config.cancer_site_list)
     df = encode_intent(df)
 
@@ -338,9 +338,10 @@ def impute_treatment_values(
 
     return df
 
-def encode_regimens(df, regimen_data):
-    regimen_map = dict(regimen_data[["Regimen", "Regimen_Rename"]].to_numpy())
-    df["regimen"] = df["regimen"].map(regimen_map).fillna("regimen_other")
+def encode_regimens(df, model_features):
+    df["regimen"] = df["regimen"].str.replace(r'[()+\-/,]', '_', regex=True)
+    df["regimen"] = "regimen_" + df["regimen"]
+    df.loc[~df["regimen"].isin(model_features), "regimen"] = "regimen_other"
     df = pd.get_dummies(df, columns=["regimen"], prefix="", prefix_sep="")
     return df
 

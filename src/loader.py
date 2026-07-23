@@ -18,8 +18,6 @@ class Config:
         self.epr_regimens = pd.read_csv(f"{info_dir}/opis_regimen_list.csv")
         self.epr_regimens.columns = self.epr_regimens.columns.str.lower()
 
-        self.gi_regimens = pd.read_excel(f"{info_dir}/GI_regimen_feature_list.xlsx")
-
         self.cancer_sites = pd.read_excel(f"{info_dir}/Cancer_Site_List.xlsx")
         self.cancer_site_list = self.cancer_sites["Cancer_Site"].tolist()
 
