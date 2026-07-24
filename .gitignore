@@ -3,6 +3,7 @@
 *.egg-info
 *.csv
 *.*_cache
+config.env
 Infos/
 Models/
 Data/

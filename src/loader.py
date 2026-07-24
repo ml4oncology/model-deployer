@@ -12,22 +12,12 @@ class Config:
         self.thresholds = pd.read_excel(f"{info_dir}/ED_Prediction_Threshold.xlsx")
         self.thresholds.columns = self.thresholds.columns.str.lower()
 
-        self.epr2epic_regimen = pd.read_excel(f"{info_dir}/A2R_EPIC_GI_regimen_map.xlsx")
-        self.epr2epic_regimen_map = dict(self.epr2epic_regimen[["PROTOCOL_DISPLAY_NAME", "Mapped_Name_All"]].to_numpy())
-
-        self.epr_regimens = pd.read_csv(f"{info_dir}/opis_regimen_list.csv")
-        self.epr_regimens.columns = self.epr_regimens.columns.str.lower()
+        from deployer.data_prep.regimen import RegimenMapper
+        self.regimen_mapper = RegimenMapper(info_dir)
+        self.regimens_to_exclude = self.regimen_mapper.regimens_to_exclude
 
         self.cancer_sites = pd.read_excel(f"{info_dir}/Cancer_Site_List.xlsx")
         self.cancer_site_list = self.cancer_sites["Cancer_Site"].tolist()
-
-        # regimens to exclude
-        epr2epic_remove_regimens = self.epr2epic_regimen.query('A2R == "Remove"').copy()
-        self.regimens_to_exclude = epr2epic_remove_regimens['Mapped_Name_All'].tolist()
-        renamed_regimens = self.epr_regimens.query("rename.notnull()").copy()
-        renamed_regimens.rename(columns={"rename": "Mapped_Name_All"}, inplace=True)
-        renamed_regimens = renamed_regimens.merge(epr2epic_remove_regimens[['A2R', 'Mapped_Name_All']], on="Mapped_Name_All", how="left")
-        self.regimens_to_exclude += renamed_regimens['Mapped_Name_All'].loc[renamed_regimens['A2R'] == "Remove"].tolist()
 
         # imputation values
         data_prep_dir = Path(__file__).parent / "data_prep"

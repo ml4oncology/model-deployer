@@ -21,6 +21,7 @@ dependencies = [
     "playwright==1.58.0",
     "pyarrow",
     "python-dateutil",
+    "python-dotenv",
     "PyYAML",
     "scikit-learn==1.3.2",
     "seismometer @ git+https://github.com/epic-open-source/seismometer.git",
