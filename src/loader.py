@@ -4,6 +4,15 @@ import pandas as pd
 import yaml
 from ml_common.util import load_pickle
 
+# Note: this is just temporary so that the saved pickled model
+# will run without issues. If we switch to ONNX, we can revisit this.
+# If you look at the notebook for training the model, there is an import
+# statement "from acu" ... . The import statements below are included
+# so that there will be no errors of 'acu' package not installed
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent / "training"))
+
 
 class Config:
     """Loads configuration files like thresholds, mappings, etc."""

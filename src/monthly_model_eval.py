@@ -17,6 +17,8 @@ from make_clinical_dataset.epr.label import get_ED_labels
 from ml_common.eval import get_model_performance
 from seismometer.data.performance import calculate_bin_stats, calculate_eval_ci
 from seismometer.plot.mpl.binary_classifier import evaluation
+from sklearn.calibration import calibration_curve
+from sklearn.metrics import roc_auc_score
 
 warnings.filterwarnings("ignore")
 
@@ -68,7 +70,7 @@ def filter_intent_to_treat(df, chemo_file, config, anchor, date_col):
     return df.loc[good].copy()
 
 
-def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_31d"):
+def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d"):
     df = df.copy()
     df["quartile"] = pd.qcut(df[prob_col], q=4, labels=["Q1", "Q2", "Q3", "Q4"])
 
@@ -142,7 +144,7 @@ def plot_odds_ratios(results_df, title="Odds Ratio of ED Visit by Predicted Risk
     return fig
 
 
-def plot_calibration(df, prob_col="ed_pred_prob", outcome_col="target_ED_31d",
+def plot_calibration(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d",
                      n_bins=10, strategy="quantile"):
     y_true = df[outcome_col].values
     y_prob = df[prob_col].values
@@ -163,6 +165,40 @@ def plot_calibration(df, prob_col="ed_pred_prob", outcome_col="target_ED_31d",
     ax2.hist(y_prob, bins=30, color="#4C72B0", edgecolor="black", alpha=0.7)
     ax2.set_xlabel("Predicted probability")
     ax2.set_ylabel("Count")
+
+    plt.tight_layout()
+    return fig
+
+def bootstrap_auc_distribution(y_true, y_pred, n_boot=1000, random_state=42):
+    """Generate a bootstrap distribution of AUC estimates via resampling with replacement."""
+    rng = np.random.default_rng(random_state)
+    n = len(y_true)
+    boot_aucs = np.empty(n_boot)
+
+    i = 0
+    while i < n_boot:
+        idx = rng.integers(0, n, n)
+        y_true_bs = y_true[idx]
+        # a resample with only one class can't produce an AUC; redraw
+        if len(np.unique(y_true_bs)) < 2:
+            continue
+        boot_aucs[i] = roc_auc_score(y_true_bs, y_pred[idx])
+        i += 1
+
+    return boot_aucs
+
+
+def plot_auc_bootstrap_distribution(boot_aucs, auc_estimate, title="Bootstrap Distribution of AUC"):
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    ax.hist(boot_aucs, bins=30, color="#4C72B0", edgecolor="black", alpha=0.8)
+    ax.axvline(auc_estimate, color="red", linestyle="--", linewidth=1.5,
+               label=f"AUC estimate = {auc_estimate:.3f}")
+
+    ax.set_xlabel("Bootstrapped AUC")
+    ax.set_ylabel("Frequency")
+    ax.set_title(title)
+    ax.legend()
 
     plt.tight_layout()
     return fig
@@ -218,7 +254,7 @@ if __name__ == "__main__":
 
     # Merge ED visit dates and true labels to Model prediction file
     ed_visit = get_emergency_room_data(ED_visits_file)
-    df = get_ED_labels(df, ed_visit, lookahead_window=31)
+    df = get_ED_labels(df, ed_visit, lookahead_window=30)
 
     # filter out cases where ED visit occurred on the same day
     df = df[(df["target_ED_date"] - df["assessment_date"]).dt.days != 0]
@@ -228,7 +264,7 @@ if __name__ == "__main__":
 
     print(f"Evaluation sample size: {len(df)}")
 
-    df["target_ED_31d"] = df["target_ED_31d"].astype(int)
+    df["target_ED_30d"] = df["target_ED_30d"].astype(int)
     pd.DataFrame(df).to_csv(f"{output_dir}/{pred_file_ED}", index=False)
 
     ######################  Check model Performance ###########################
@@ -236,7 +272,7 @@ if __name__ == "__main__":
     print(f"=========== Anchored on {date_col} ====================")
 
     event_col = "target_ED_date"
-    label_col = "target_ED_31d"
+    label_col = "target_ED_30d"
     pred_col = "ed_pred_prob"
 
     # Get pre-defined prediction thresholds
@@ -320,6 +356,18 @@ if __name__ == "__main__":
     plt.close(auroc_fig)
     print(f"AUROC plot saved to {auroc_plot_file}.")
 
+    ######################  Bootstrap AUC Distribution ###########################
+
+    boot_aucs = bootstrap_auc_distribution(y_true, y_pred, n_boot=1000, random_state=42)
+    boot_fig = plot_auc_bootstrap_distribution(
+        boot_aucs, auroc_val,
+        title=f"Bootstrap Distribution of AUC — {anchor.title()}-Anchored Model",
+    )
+    boot_plot_file = f"{anchor}_auc_bootstrap.png"
+    boot_fig.savefig(f"{output_dir}/{boot_plot_file}", bbox_inches="tight", dpi=150)
+    plt.close(boot_fig)
+    print(f"AUC bootstrap distribution plot saved to {boot_plot_file}.")
+
     ######################  Calibration & Odds Ratio Plots ###########################
 
     cal_fig = plot_calibration(df, prob_col=pred_col, outcome_col=label_col)
@@ -329,6 +377,16 @@ if __name__ == "__main__":
     print(f"Calibration plot saved to {cal_plot_file}.")
 
     or_df, quartile_counts = quartile_odds_ratios(df, prob_col=pred_col, outcome_col=label_col)
+
+    print("\nQuartile observed frequencies:")
+    print(f"  {'Quartile':<12} {'Observed Freq':<16} {'Sample Size':<12}")
+    print(f"  {'-'*12} {'-'*16} {'-'*12}")
+    for q in ["Q1", "Q2", "Q3", "Q4"]:
+        row = quartile_counts.loc[q]
+        freq = row["events"] / row["n"]
+        print(f"  {q:<12} {freq:<12.4f}     {row['n']:<12}")
+    print(f"  {'Total':<12} {'':<16} {quartile_counts['n'].sum():<12}\n")
+
     or_fig = plot_odds_ratios(or_df)
     or_plot_file = f"{anchor}_odds_ratios.png"
     or_fig.savefig(f"{output_dir}/{or_plot_file}", bbox_inches="tight", dpi=150)
