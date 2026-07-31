@@ -18,7 +18,14 @@ DEMOG_COLS = ['female', # old pull
 COLUMN_PATTERNS = ["cancer_site_C"]   # this is for old pull
 
 LAB_BIOCHEM_COLS = LAB_COLS.copy()
-LAB_BIOCHEM_COLS.remove('carbohydrate_antigen_19-9')
+cols_to_remove=['carbohydrate_antigen_19-9', # not in the v1 pull
+                'activated_partial_thromboplastin_time', # the following are not in the v2 pull
+                'calcium',
+                'carcinoembryonic_antigen', # maybe dropped from model training due to high missingness
+                'eGFR',
+                'hematocrit']
+for col in cols_to_remove:
+    LAB_BIOCHEM_COLS.remove(col)
 
 ESAS_COLS = SYMP_COLS
 

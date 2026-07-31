@@ -2,6 +2,8 @@
 Module to train and tune the models using K-fold cross validation
 """
 
+import os
+import random
 import warnings
 from functools import partial
 from pathlib import Path
@@ -21,6 +23,20 @@ from sklearn.metrics import roc_auc_score
 from xgboost import XGBClassifier
 
 warnings.filterwarnings(action="ignore", category=ConvergenceWarning)
+
+SEED = 42
+
+
+def set_seed(seed: int = SEED) -> None:
+    """Set the global random seed for reproducibility.
+
+    NOTE: ``PYTHONHASHSEED`` only takes effect if it is set before the Python
+    interpreter starts, so it must also be set in the environment (e.g. in the
+    entry script) to guarantee reproducibility of hash-based iteration orders.
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
 
 algs = {
     "Ridge": LogisticRegression,
@@ -77,22 +93,22 @@ model_static_param = {
     "Ridge": {
         "penalty": "l2",
         "class_weight": "balanced",
-        "max_iter": 500,
-        "random_state": 42,
+        "max_iter": 250,
+        "random_state": SEED,
     },
     "LASSO": {
         "penalty": "l1",
         "solver": "saga",
         "class_weight": "balanced",
         "max_iter": 1000,
-        "random_state": 42,
+        "random_state": SEED,
     },
     "XGB": {
-        "random_state": 42,
+        "random_state": SEED,
     },
-    "LGBM": {"random_state": 42, "verbosity": -1},
-    "RF": {"random_state": 42, "n_jobs": -1, "warm_start": True},
-    "SVC": {"random_state": 42, "probability": True},
+    "LGBM": {"random_state": SEED, "verbosity": -1},
+    "RF": {"random_state": SEED, "n_jobs": -1, "warm_start": True},
+    "SVC": {"random_state": SEED, "probability": True},
 }
 
 
@@ -123,6 +139,7 @@ def train_model(
 def train_models(
     X: pd.DataFrame, Y: pd.DataFrame, metainfo: pd.DataFrame, best_params: dict
 ):
+    set_seed()
     return {alg: train_model(X, Y, metainfo, alg, best_params) for alg in algs}
 
 
@@ -181,13 +198,14 @@ def tune_params(
     verbose: int = 2,
 ):
     """Tunes hyperparameters for a given algorithm using Bayesian Optimization."""
+    set_seed()
     hyperparam_config = model_tuning_param[alg]
     data = (X, Y, metainfo)
     bo = BayesianOptimization(
         f=partial(eval_func, alg=alg, data=data),
         pbounds=hyperparam_config,
         verbose=verbose,
-        random_state=42,
+        random_state=SEED,
         allow_duplicate_points=True,
     )
 

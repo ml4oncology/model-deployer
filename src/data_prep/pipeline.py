@@ -26,6 +26,7 @@ from make_clinical_dataset.epr.engineer import (get_change_since_prev_session,
 )
 from make_clinical_dataset.epr.prep import fill_missing_data_heuristically
 from make_clinical_dataset.shared import logger
+from make_clinical_dataset.shared.constants import LAB_CHANGE_COLS, LAB_COLS
 
 logger.setLevel(logging.WARNING)
 
@@ -105,7 +106,6 @@ def get_data(
     # Get changes between treatment sessions
     # NOTE: for clinic anchor, we are not keeping track of prev visits, so no changes are captured here...
     # TODO: We should simply get the prev changes since last lab visit, symptom survey, etc. and deprecate this function
-    df["hematocrit"] = None  # need to add this missing feature here. TODO: clean this up
     df = get_change_since_prev_session(df)
 
     if model.anchor == "treatment":
@@ -153,7 +153,14 @@ def get_data(
 
     # Recreate any missing columns
     missing_cols = [str(col) for col in model.model_features if col not in df.columns]
-    df[missing_cols] = 0
+
+    # Lab measurements with no data are missing (NaN), not zero-valued
+    lab_value_cols = [col for col in missing_cols if col in LAB_COLS or col in LAB_CHANGE_COLS]
+    for col in lab_value_cols:
+        df[col] = np.nan
+        df[f"{col}_is_missing"] = True
+
+    df[[col for col in missing_cols if col not in df.columns]] = 0
     for col, val in FILL_VALS[model.anchor].items():
         if col in missing_cols:
             df[col] = val
@@ -347,6 +354,8 @@ def encode_regimens(df, model_features):
 
 
 def encode_intent(df):
+    df = df.copy()
+    df["intent"] = df["intent"].str.lower()
     df = pd.get_dummies(df, columns=["intent"])
     return df
 

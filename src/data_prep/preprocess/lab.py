@@ -7,7 +7,7 @@ from typing import Optional
 
 import pandas as pd
 from deployer.data_prep.constants import DROP_CLINIC_COLUMNS
-from make_clinical_dataset.shared.constants import OBS_MAP
+from make_clinical_dataset.shared.constants import LAB_COLS, OBS_MAP
 
 
 def get_lab_data(hema_data_file, biochem_data_file, anchor):
@@ -59,6 +59,7 @@ def process_lab_data(df):
 
     # make each observation name into a new column
     df = df.pivot(index=["patientId", "obs_date"], columns="obs_name", values="obs_value")
+    df = df.reindex(columns=LAB_COLS)
 
     # normalize inequality entries (e.g. '<5' → 2.5, '>1000' → 1000.0) then
     # coerce any remaining non-numeric strings to NaN — handles unknown entries
