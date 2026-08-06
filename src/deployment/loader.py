@@ -11,7 +11,7 @@ from ml_common.util import load_pickle
 # so that there will be no errors of 'acu' package not installed
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent / "training"))
+sys.path.append(str(Path(__file__).parent / ".." / "training"))
 
 
 class Config:

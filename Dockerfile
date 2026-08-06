@@ -22,4 +22,4 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 RUN mkdir -p Data Outputs
 
-CMD ["python", "src/main.py", "--help"]
+CMD ["python", "src/deployment/main.py", "--help"]

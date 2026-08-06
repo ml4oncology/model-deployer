@@ -49,7 +49,7 @@ def _build_keep_columns(df: pd.DataFrame) -> list[str]:
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REGIMEN_PATH = _REPO_ROOT / "Infos" / "master_regimen_map.csv"
 
-with open(_REPO_ROOT / "src" / "data_prep" / "config.yaml") as f:
+with open(_REPO_ROOT / "src" / "deployment" / "data_prep" / "config.yaml") as f:
     _DATA_PREP_CONFIG = yaml.safe_load(f)
 
 def _clean_regimens(df):

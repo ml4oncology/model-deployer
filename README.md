@@ -48,17 +48,17 @@ A2R deployment model version 1 was trained using [Preduce v0.1.1](https://github
 
 # Running the dashboard pipeline
 ```bash
-python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
-python src/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804 --disable-save-dashboard-png
+python src/deployment/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic
+python src/deployment/monthly_model_eval.py --model-anchor clinic --monthly-pull-date 20250604 --start-date 20240904 --end-date 20250804 --disable-save-dashboard-png
 ```
 
 Dashboard prerequisite:
 - Dashboard generation uses the silent deployment baseline file. To create that baseline, first run 
 ```bash
-python src/main.py --start-date [start_date] --end-date [end_date] --model-anchor clinic --run-on-silent-deployment True
+python src/deployment/main.py --start-date [start_date] --end-date [end_date] --model-anchor clinic --run-on-silent-deployment True
 ``` 
 where `[start_date]` and `[end_date]` are the silent deployment dates.
-- If you are not generating that silent deployment baseline first, run `src/main.py` with `--disable-save-dashboard-png` to avoid dashboard generation errors.
+- If you are not generating that silent deployment baseline first, run `src/deployment/main.py` with `--disable-save-dashboard-png` to avoid dashboard generation errors.
 
 Optional dashboard arguments:
 - `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
@@ -70,13 +70,13 @@ Optional dashboard arguments:
 
 Example:
 ```bash
-python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --dashboard-font-scale 1.5
-python src/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --no-subset-dashboard-patients
+python src/deployment/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --dashboard-font-scale 1.5
+python src/deployment/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --no-subset-dashboard-patients
 ```
 
 # Running the evaluation pipeline
 ```bash
-python src/monthly_model_eval.py --start-date <start_date> --end-date <end_date> --monthly-pull-date <monthly_pull_date> --prediction-file-path <path_to_predictions>
+python src/deployment/monthly_model_eval.py --start-date <start_date> --end-date <end_date> --monthly-pull-date <monthly_pull_date> --prediction-file-path <path_to_predictions>
 ```
 
 `<monthly_pull_date>` refers to the monthly chemo file pull date. The monthly chemo file pulls are cumulative. Make sure to choose a date that is 1 month after `<end_date>` if you are predicting the risk of ED visit in 1 month.  

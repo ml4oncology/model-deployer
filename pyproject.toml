@@ -41,7 +41,7 @@ dev = [
 ]
 
 [tool.setuptools]
-package-dir = {"deployer" = "src"}
+package-dir = {"deployer" = "src/deployment"}
 
 [tool.setuptools.package-data]
 "deployer.dashboard" = ["style.css"]
