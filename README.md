@@ -41,7 +41,7 @@ In the home directory, subdirectories `Models`, `Infos`, and `Data` needs to be 
     prep: <prep_pickle_filename_without_.pkl>
   ```
   When switching to a new model, place the new files in `Models/` and `Infos/Prep/`, then update the filenames in `model_manifest.yaml`.
-- `Infos` cmust contain the regimen dictionary mapping and exclusion list `master_regimen_map.csv` as well as a subdirectory `Prep` which contains the config files, data pre-processing modules, and data used to train the deployment model. 
+- `Infos` must contain the regimen dictionary mapping and exclusion list `master_regimen_map.csv` as well as a subdirectory `Prep` which contains the config files, data pre-processing modules, and data used to train the deployment model. 
 - `Data` contains live EHR-pulled data everyday during deployment.
 
 A2R deployment model version 1 was trained using [Preduce v0.1.1](https://github.com/ml4oncology/PredUCE/blob/78e7b064ee5fc91dd913217b67febe4dbab0fa22/notebooks/acu/2.%20Clinic-Centered-Emerg-Pred.ipynb).

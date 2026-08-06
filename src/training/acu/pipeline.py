@@ -10,6 +10,7 @@ from warnings import simplefilter
 import numpy as np
 import pandas as pd
 from pathlib import Path
+import yaml
 from make_clinical_dataset.epr.engineer import (
     collapse_rare_categories,
     get_change_since_prev_session,
@@ -48,6 +49,9 @@ def _build_keep_columns(df: pd.DataFrame) -> list[str]:
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REGIMEN_PATH = _REPO_ROOT / "Infos" / "master_regimen_map.csv"
 
+with open(_REPO_ROOT / "src" / "data_prep" / "config.yaml") as f:
+    _DATA_PREP_CONFIG = yaml.safe_load(f)
+
 def _clean_regimens(df):
     df_map = pd.read_csv(_REGIMEN_PATH)
     master_regimen_map = dict(df_map[["regimen", "mapped_regimen"]].to_numpy())
@@ -82,7 +86,8 @@ class PrepACUData(PrepData):
         start_date: str,
         end_date: str,
         drop_cols_missing_thresh: int = 80,
-        drop_rows_missing_thresh: int = 80
+        drop_rows_missing_thresh: int = 80,
+        anchor: str = "clinic",
     ) -> pd.DataFrame:
         """
         Args:
@@ -167,7 +172,9 @@ class PrepACUData(PrepData):
         # df = drop_unused_drug_features(df)
 
         # fill missing data that can be filled heuristically (zeros, max values, etc)
-        df = fill_missing_data_heuristically(df)
+        fill_vals = _DATA_PREP_CONFIG["fill_missing_data"][anchor].copy()
+        fill_vals["days_since_prev_ED_visit"] = _DATA_PREP_CONFIG["ed_visit_lookback_window"] * 365
+        df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
 
         if drop_cols_missing_thresh != -1:
             # drop features with high missingness

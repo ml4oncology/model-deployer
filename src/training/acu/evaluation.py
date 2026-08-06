@@ -14,13 +14,30 @@ def predict(models, data):
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
 
-def evaluate_test(model, X, Y):
+def _bootstrap_auc_ci(y_true, y_pred, n_samples=1000, seed=42):
+    """Compute 95% CI for AUROC via bootstrap resampling."""
+    rng = np.random.default_rng(seed)
+    n = len(y_true)
+    y_true = np.asarray(y_true)
+    idxs = np.arange(n)
+    aucs = []
+    for _ in range(n_samples):
+        idx = rng.choice(idxs, size=n, replace=True)
+        if len(np.unique(y_true[idx])) < 2:
+            continue
+        aucs.append(roc_auc_score(y_true[idx], y_pred[idx]))
+    lo, hi = np.percentile(aucs, [2.5, 97.5])
+    return lo, hi
+
+def evaluate_test(model, X, Y, n_bootstrap=1000, seed=42):
     result = {}
     for target, label in Y.items():
         pred = predict(model[target], X)
+        auroc = roc_auc_score(label, pred)
+        lo, hi = _bootstrap_auc_ci(label, pred, n_samples=n_bootstrap, seed=seed)
         result[target] = {
             "AUPRC": average_precision_score(label, pred),
-            "AUROC": roc_auc_score(label, pred),
+            "AUROC": f"{auroc:.4f} ({lo:.4f}, {hi:.4f})",
             "Brier": brier_score_loss(label, pred),
         }
     return pd.DataFrame(result)

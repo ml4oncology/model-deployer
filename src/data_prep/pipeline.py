@@ -8,7 +8,7 @@ from datetime import timedelta
 
 import pandas as pd
 import numpy as np
-from deployer.data_prep.constants import DAILY_POSTFIX_MAP, FILL_VALS, PROJ_NAME
+from deployer.data_prep.constants import DAILY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.diagnosis import get_demographic_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
@@ -116,7 +116,9 @@ def get_data(
         df = df[mask]
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
-    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=FILL_VALS[model.anchor])
+    fill_vals = model.prep_cfg["fill_missing_data"][model.anchor].copy()
+    fill_vals["days_since_prev_ED_visit"] = model.prep_cfg["ed_visit_lookback_window"] * 365
+    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
 
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py
@@ -161,7 +163,7 @@ def get_data(
         df[f"{col}_is_missing"] = True
 
     df[[col for col in missing_cols if col not in df.columns]] = 0
-    for col, val in FILL_VALS[model.anchor].items():
+    for col, val in fill_vals.items():
         if col in missing_cols:
             df[col] = val
 
