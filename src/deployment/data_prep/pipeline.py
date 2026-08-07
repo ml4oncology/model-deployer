@@ -116,9 +116,15 @@ def get_data(
         df = df[mask]
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
-    fill_vals = model.prep_cfg["fill_missing_data"][model.anchor].copy()
-    fill_vals["days_since_prev_ED_visit"] = model.prep_cfg["ed_visit_lookback_window"] * 365
+    imputation_val = model.prep_cfg["ed_visit_lookback_window"] * 365
+    fill_vals = {
+        "days_since_prev_ED_visit": imputation_val,
+        "days_since_last_treatment": imputation_val,
+    }
     df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
+    for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
+        if col in df.columns:
+            df.loc[df[col] < 0, col] = imputation_val
 
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py

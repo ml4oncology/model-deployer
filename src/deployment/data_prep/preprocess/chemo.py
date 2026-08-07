@@ -373,13 +373,14 @@ def compute_days_since(
         data_pull_day - prev_treatment_date
     ).dt.days
 
+    # Wayne's notes: this will be filled heuristically later
     # First treatment per MRN -> NaN -> set to 0
-    df["days_since_last_treatment"] = (
-        df["days_since_last_treatment"]
-        .fillna(0)
-        .clip(lower=0)
-        .astype(int)
-    )
+    # df["days_since_last_treatment"] = (
+    #     df["days_since_last_treatment"]
+    #     .fillna(0)
+    #     .clip(lower=0)
+    #     .astype(int)
+    # )
 
     # Restore original order
     df = df.loc[original_index]

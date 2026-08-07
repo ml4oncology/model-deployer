@@ -172,9 +172,15 @@ class PrepACUData(PrepData):
         # df = drop_unused_drug_features(df)
 
         # fill missing data that can be filled heuristically (zeros, max values, etc)
-        fill_vals = _DATA_PREP_CONFIG["fill_missing_data"][anchor].copy()
-        fill_vals["days_since_prev_ED_visit"] = _DATA_PREP_CONFIG["ed_visit_lookback_window"] * 365
+        imputation_val = _DATA_PREP_CONFIG["ed_visit_lookback_window"] * 365
+        fill_vals = {
+            "days_since_prev_ED_visit": imputation_val,
+            "days_since_last_treatment": imputation_val,
+        }
         df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
+        for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
+            if col in df.columns:
+                df.loc[df[col] < 0, col] = imputation_val
 
         if drop_cols_missing_thresh != -1:
             # drop features with high missingness
