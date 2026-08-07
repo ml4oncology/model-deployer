@@ -75,12 +75,12 @@ class Model:
             )
         self.ed_prior_visits_feature = ed_prior_visits_features[0]
         self.ed_visit_lookback_days = ED_VISIT_COUNT_LOOKBACK_DAYS[self.ed_prior_visits_feature]
-        if self.ed_prior_visits_feature.endswith("within_1_year"):
-            assert self.prep_cfg["ed_visit_lookback_window_deployment"] > 1, (
-                "A model with the 1-year ED prior-visits feature is only valid when the "
-                "deployment ED visit lookback window is > 1, but got "
-                f"ed_visit_lookback_window_deployment={self.prep_cfg['ed_visit_lookback_window_deployment']}"
-            )
+        ed_lookback_years = self.ed_visit_lookback_days // 365
+        deployment_lookback_window = self.prep_cfg["ed_visit_lookback_window_deployment"]
+        assert ed_lookback_years == 1 or ed_lookback_years == deployment_lookback_window, (
+            f"Model ED lookback of {ed_lookback_years} year(s) must be 1 (deployment uses a hardcoded "
+            f"1-year lookback) or match ed_visit_lookback_window_deployment={deployment_lookback_window}"
+        )
 
         # column ordering needs to match
         # TODO: use the scaler, imputer, etc's pre-existing columns in ml-common.prep

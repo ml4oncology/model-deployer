@@ -90,12 +90,11 @@ class PrepACUData(PrepData):
         super().__init__()
         if ed_lookback_years not in ED_LOOKBACK_OPTIONS:
             raise ValueError(f"ed_lookback_years must be one of {list(ED_LOOKBACK_OPTIONS)}")
-        if ed_lookback_years == 1:
-            deployment_lookback_window = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"]
-            assert deployment_lookback_window > 1, (
-                "ed_lookback_years=1 is only valid when the deployment ED visit lookback window is > 1 "
-                f"but got ed_visit_lookback_window_deployment={deployment_lookback_window}"
-            )
+        deployment_lookback_window = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"]
+        assert ed_lookback_years == 1 or ed_lookback_years == deployment_lookback_window, (
+            f"ed_lookback_years={ed_lookback_years} must be 1 (deployment uses a hardcoded 1-year lookback) "
+            f"or match ed_visit_lookback_window_deployment={deployment_lookback_window}"
+        )
         self.ed_lookback_years = ed_lookback_years
         self.ed_lookback = ED_LOOKBACK_OPTIONS[ed_lookback_years]
 
