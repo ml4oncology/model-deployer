@@ -87,7 +87,9 @@ def get_data(
     }
 
     # Combine Features
-    df = combine_features(model.prep_cfg, feats, model.anchor, config.imputation_constants)
+    df = combine_features(
+        model.prep_cfg, feats, model.anchor, config.imputation_constants, model.ed_prior_visits_feature
+    )
     combined_mrns = pd.Index(df["mrn"].dropna().unique())
     missing_after_combine = demographic_mrns.difference(combined_mrns)
     if not missing_after_combine.empty:
@@ -116,7 +118,7 @@ def get_data(
         df = df[mask]
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
-    imputation_val = model.prep_cfg["ed_visit_lookback_window_deployment"] * 365
+    imputation_val = model.ed_visit_lookback_days
     fill_vals = {
         "days_since_prev_ED_visit": imputation_val,
         "days_since_last_treatment": imputation_val,
@@ -197,7 +199,13 @@ def get_data(
     }
 
 
-def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imputation_constants: dict):
+def combine_features(
+    cfg: dict,
+    feats: dict[str, pd.DataFrame],
+    anchor: str,
+    imputation_constants: dict,
+    ed_prior_visits_feature: str,
+):
     """Combine the features into one unified dataset aligned on the specified anchor."""
     sym = feats["symptom"]
     dmg = feats["demographic"]
@@ -244,15 +252,43 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imp
     if not lab.empty:
         df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window_deployment"])
     if not erv.empty:
-        df = combine_event_to_main_data(
-            df,
-            erv,
-            "assessment_date",
-            "event_date",
-            event_name="ED_visit",
-            lookback_window=cfg["ed_visit_lookback_window_deployment"],
-            parallelize=False,
-        )
+        if ed_prior_visits_feature == "num_prior_ED_visits_within_1_year":
+            # NOTE: combine_event_to_main_data counts events with an inclusive .between() window, so a
+            # same-day event would be counted with days_since_prev_ED_visit == 0. That cannot occur in
+            # deployment: get_epic_arrival_dates only carries ED arrivals up to the day before the
+            # clinic date, so event_date == assessment_date is impossible here. This makes the
+            # inclusive 1-year count equivalent to the strict < lookback used at training time.
+            df = combine_event_to_main_data(
+                df,
+                erv,
+                "assessment_date",
+                "event_date",
+                event_name="ED_visit",
+                lookback_window=1,
+                parallelize=False,
+            )
+            assert "num_prior_ED_visits_within_1_years" in df.columns
+            df = df.rename(
+                columns={
+                    "num_prior_ED_visits_within_1_years": "num_prior_ED_visits_within_1_year"
+                }
+            )
+            # epr leaves missing counts as NaN (it 0-fills only the 5-year count during prep), which
+            # mean imputation would fill with a small non-zero training mean. A missing count means no
+            # prior ED visits, so explicitly 0-fill here.
+            df["num_prior_ED_visits_within_1_year"] = df[
+                "num_prior_ED_visits_within_1_year"
+            ].fillna(0)
+        else:
+            df = combine_event_to_main_data(
+                df,
+                erv,
+                "assessment_date",
+                "event_date",
+                event_name="ED_visit",
+                lookback_window=cfg["ed_visit_lookback_window_deployment"],
+                parallelize=False,
+            )
     df = add_engineered_features(df, "assessment_date")
 
     return df

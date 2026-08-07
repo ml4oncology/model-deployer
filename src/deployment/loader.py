@@ -5,6 +5,8 @@ import yaml
 from make_clinical_dataset.shared.constants import DEFAULT_CONFIG_PATH
 from ml_common.util import load_pickle
 
+from deployer.data_prep.constants import ED_VISIT_COUNT_LOOKBACK_DAYS
+
 # Note: this is just temporary so that the saved pickled model
 # will run without issues. If we switch to ONNX, we can revisit this.
 # If you look at the notebook for training the model, there is an import
@@ -60,6 +62,25 @@ class Model:
         if "orig_x" in manifest:
             self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
+
+        # Infer which ED prior-visits count feature this model was trained on so the
+        # deployment pipeline combines ED visits with the matching lookback window.
+        ed_prior_visits_features = [
+            feat for feat in self.model_features if feat in ED_VISIT_COUNT_LOOKBACK_DAYS
+        ]
+        if len(ed_prior_visits_features) != 1:
+            raise ValueError(
+                f"Expected exactly one ED prior-visits count feature in model features, "
+                f"found {ed_prior_visits_features}."
+            )
+        self.ed_prior_visits_feature = ed_prior_visits_features[0]
+        self.ed_visit_lookback_days = ED_VISIT_COUNT_LOOKBACK_DAYS[self.ed_prior_visits_feature]
+        if self.ed_prior_visits_feature.endswith("within_1_year"):
+            assert self.prep_cfg["ed_visit_lookback_window_deployment"] > 1, (
+                "A model with the 1-year ED prior-visits feature is only valid when the "
+                "deployment ED visit lookback window is > 1, but got "
+                f"ed_visit_lookback_window_deployment={self.prep_cfg['ed_visit_lookback_window_deployment']}"
+            )
 
         # column ordering needs to match
         # TODO: use the scaler, imputer, etc's pre-existing columns in ml-common.prep

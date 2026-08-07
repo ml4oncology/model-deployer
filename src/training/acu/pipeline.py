@@ -33,7 +33,7 @@ from make_clinical_dataset.epr.util import get_excluded_numbers
 from make_clinical_dataset.shared.constants import EPR_DRUG_COLS, LAB_COLS, UNIT_MAP
 from ml_common.constants import CANCER_CODE_MAP
 from sklearn.model_selection import StratifiedGroupKFold
-from .constants import COLUMN_PATTERNS, KEEP_COLUMNS_EXPLICIT
+from .constants import COLUMN_PATTERNS, ED_LOOKBACK_OPTIONS, build_keep_columns_explicit
 
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
@@ -42,9 +42,14 @@ logger = logging.getLogger(__name__)
 ###############################################################################
 # Helper
 ###############################################################################
-def _build_keep_columns(df: pd.DataFrame) -> list[str]:
+def _build_keep_columns(df: pd.DataFrame, ed_lookback_years: int = 5) -> list[str]:
     pattern_cols = df.columns[df.columns.str.contains("|".join(COLUMN_PATTERNS))].tolist()
-    explicit_cols = [c for c in KEEP_COLUMNS_EXPLICIT if c in df.columns]
+    explicit_cols = [c for c in build_keep_columns_explicit(ed_lookback_years) if c in df.columns]
+    prior_visits_feature = ED_LOOKBACK_OPTIONS[ed_lookback_years]["prior_visits_feature"]
+    assert prior_visits_feature in df.columns, (
+        f"Expected feature '{prior_visits_feature}' for ed_lookback_years={ed_lookback_years} "
+        "but it is missing from the training data."
+    )
     return explicit_cols + pattern_cols
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -81,6 +86,19 @@ def exclude_immediate_events(df: pd.DataFrame) -> pd.DataFrame:
 # Data Preparation Pipeline
 ###############################################################################
 class PrepACUData(PrepData):
+    def __init__(self, ed_lookback_years: int = 5):
+        super().__init__()
+        if ed_lookback_years not in ED_LOOKBACK_OPTIONS:
+            raise ValueError(f"ed_lookback_years must be one of {list(ED_LOOKBACK_OPTIONS)}")
+        if ed_lookback_years == 1:
+            deployment_lookback_window = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"]
+            assert deployment_lookback_window > 1, (
+                "ed_lookback_years=1 is only valid when the deployment ED visit lookback window is > 1 "
+                f"but got ed_visit_lookback_window_deployment={deployment_lookback_window}"
+            )
+        self.ed_lookback_years = ed_lookback_years
+        self.ed_lookback = ED_LOOKBACK_OPTIONS[ed_lookback_years]
+
     def preprocess(
         self,
         df: pd.DataFrame,
@@ -99,7 +117,7 @@ class PrepACUData(PrepData):
         """
 
         # keep relevant columns
-        df = df[_build_keep_columns(df)]
+        df = df[_build_keep_columns(df, ed_lookback_years=self.ed_lookback_years)]
 
         #-----------------------------------------------------------------------
         # filter rows based on various categories
@@ -173,7 +191,7 @@ class PrepACUData(PrepData):
         # df = drop_unused_drug_features(df)
 
         # fill missing data that can be filled heuristically (zeros, max values, etc)
-        imputation_val = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"] * 365
+        imputation_val = self.ed_lookback["lookback_days"]
         fill_vals = {
             "days_since_prev_ED_visit": imputation_val,
             "days_since_last_treatment": imputation_val,

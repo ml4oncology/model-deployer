@@ -32,8 +32,10 @@ for col in cols_to_remove:
 ESAS_COLS = SYMP_COLS.copy()
 ESAS_COLS.remove('ecog') # high missingness in deployment
 
-ED_COLS = ['days_since_prev_ED_visit',
-           'num_prior_ED_visits_within_5_years']
+ED_LOOKBACK_OPTIONS = {
+    5: {"prior_visits_feature": "num_prior_ED_visits_within_5_years", "lookback_days": 5 * 365},
+    1: {"prior_visits_feature": "num_prior_ED_visits_within_1_year", "lookback_days": 1 * 365},
+}
 
 ENGINEERED_COLS = ['visit_month_sin',
                    'visit_month_cos',
@@ -42,5 +44,12 @@ ENGINEERED_COLS = ['visit_month_sin',
 
 TARGET_COLS = ["target_ED_30d"]
 
-KEEP_COLUMNS_EXPLICIT = META_COLS + CHEMO_COLS + DEMOG_COLS + \
-    LAB_BIOCHEM_COLS + ESAS_COLS + ED_COLS + ENGINEERED_COLS + TARGET_COLS
+_META_COLS = META_COLS + CHEMO_COLS + DEMOG_COLS + \
+    LAB_BIOCHEM_COLS + ESAS_COLS + ENGINEERED_COLS + TARGET_COLS
+
+
+def build_keep_columns_explicit(ed_lookback_years: int = 5) -> list[str]:
+    """Return the explicit columns to keep for the given ED lookback variant."""
+    ed_cols = ['days_since_prev_ED_visit',
+               ED_LOOKBACK_OPTIONS[ed_lookback_years]["prior_visits_feature"]]
+    return _META_COLS + ed_cols
