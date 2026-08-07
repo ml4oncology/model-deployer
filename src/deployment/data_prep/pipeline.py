@@ -125,6 +125,7 @@ def get_data(
     for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
         if col in df.columns:
             df.loc[df[col] < 0, col] = imputation_val
+            df[col] = df[col].clip(upper=imputation_val)
 
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py
