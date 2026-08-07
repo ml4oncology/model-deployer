@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from make_clinical_dataset.shared.constants import DEFAULT_CONFIG_PATH
 from ml_common.util import load_pickle
 
 # Note: this is just temporary so that the saved pickled model
@@ -46,10 +47,7 @@ class Model:
         self.anchor = anchor
         self.name = name
 
-        data_prep_dir = Path(__file__).parent / "data_prep"
-        data_processing_constants = data_prep_dir / "config.yaml"
-
-        with open(data_processing_constants) as file:
+        with open(DEFAULT_CONFIG_PATH) as file:
             self.prep_cfg = yaml.safe_load(file)
 
         # Load model file names from manifest

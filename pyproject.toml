@@ -12,7 +12,7 @@ authors = [
     { name = "Wayne Uy", email = "WayneIsaac.Uy@uhn.ca" }
 ]
 dependencies = [
-    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v2.0.1",
+    "make_clinical_dataset @ git+https://github.com/ml4oncology/make-clinical-dataset.git@v2.1.0",
     "matplotlib",
     "numpy==1.26.4",
     "openpyxl",

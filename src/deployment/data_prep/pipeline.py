@@ -60,7 +60,7 @@ def build_features(
                                             data_pull_day, 
                                             anchor,
                                             "prediction", 
-                                            model_constants["trt_lookahead_window"])
+                                            model_constants["trt_lookahead_window_deployment"])
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
     feats["emergency"] = get_emergency_room_data(ed_file)
 
@@ -116,7 +116,7 @@ def get_data(
         df = df[mask]
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
-    imputation_val = model.prep_cfg["ed_visit_lookback_window"] * 365
+    imputation_val = model.prep_cfg["ed_visit_lookback_window_deployment"] * 365
     fill_vals = {
         "days_since_prev_ED_visit": imputation_val,
         "days_since_last_treatment": imputation_val,
@@ -238,10 +238,10 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imp
 
     if not sym.empty:
         df = merge_closest_measurements(
-            df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window"]
+            df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window_deployment"]
         )
     if not lab.empty:
-        df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window"])
+        df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window_deployment"])
     if not erv.empty:
         df = combine_event_to_main_data(
             df,
@@ -249,7 +249,7 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imp
             "assessment_date",
             "event_date",
             event_name="ED_visit",
-            lookback_window=cfg["ed_visit_lookback_window"],
+            lookback_window=cfg["ed_visit_lookback_window_deployment"],
             parallelize=False,
         )
     df = add_engineered_features(df, "assessment_date")

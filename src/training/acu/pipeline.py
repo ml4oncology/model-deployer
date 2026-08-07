@@ -17,6 +17,7 @@ from make_clinical_dataset.epr.engineer import (
     get_missingness_features,
     get_visit_month_feature
 )
+from make_clinical_dataset.shared.constants import DEFAULT_CONFIG_PATH
 from make_clinical_dataset.epr.filter import (
     drop_highly_missing_features,
     drop_samples_outside_study_date,
@@ -49,7 +50,7 @@ def _build_keep_columns(df: pd.DataFrame) -> list[str]:
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REGIMEN_PATH = _REPO_ROOT / "Infos" / "master_regimen_map.csv"
 
-with open(_REPO_ROOT / "src" / "deployment" / "data_prep" / "config.yaml") as f:
+with open(DEFAULT_CONFIG_PATH) as f:
     _DATA_PREP_CONFIG = yaml.safe_load(f)
 
 def _clean_regimens(df):
@@ -172,7 +173,7 @@ class PrepACUData(PrepData):
         # df = drop_unused_drug_features(df)
 
         # fill missing data that can be filled heuristically (zeros, max values, etc)
-        imputation_val = _DATA_PREP_CONFIG["ed_visit_lookback_window"] * 365
+        imputation_val = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"] * 365
         fill_vals = {
             "days_since_prev_ED_visit": imputation_val,
             "days_since_last_treatment": imputation_val,
