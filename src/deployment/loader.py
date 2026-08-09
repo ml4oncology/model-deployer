@@ -28,9 +28,6 @@ class Config:
         self.regimen_mapper = RegimenMapper(info_dir)
         self.regimens_to_exclude = self.regimen_mapper.regimens_to_exclude
 
-        self.cancer_sites = pd.read_excel(f"{info_dir}/Cancer_Site_List.xlsx")
-        self.cancer_site_list = self.cancer_sites["Cancer_Site"].tolist()
-
         # imputation values
         data_prep_dir = Path(__file__).parent / "data_prep"
         imputation_constants_path = data_prep_dir / "imputation_constants.yaml"
@@ -62,6 +59,15 @@ class Model:
         if "orig_x" in manifest:
             self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
+
+        # Inference reorders inputs to fold-0's feature order and scores every fold
+        # positionally, so all folds must agree on it.
+        for fold_model in self.model[1:]:
+            if list(fold_model.feature_names_in_) != list(self.model_features):
+                raise ValueError(
+                    "Fold models disagree on feature order. Every fold must match "
+                    "fold-0's feature_names_in_."
+                )
 
         # Infer which ED prior-visits count feature this model was trained on so the
         # deployment pipeline combines ED visits with the matching lookback window.

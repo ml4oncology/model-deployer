@@ -56,17 +56,26 @@ def _add_appointment_info(
 
     appointments = pd.read_csv(
         appointments_file,
-        usecols=["PATIENT_ID", "PAT_NAME", "VISIT_PROVIDER_NAME"],
+        usecols=lambda c: c in {"PATIENT_ID", "PAT_NAME", "VISIT_PROVIDER_NAME"},
     )
     appointments = appointments.drop_duplicates(subset=["PATIENT_ID"])
-    appointments = appointments.rename(columns={"PATIENT_ID": "mrn", "PAT_NAME": "patient_name"})
-    patient_names = appointments["patient_name"].astype("string").str.split(",", n=1, expand=True)
-    formatted_names = patient_names[0].str.strip()
-    if 1 in patient_names:
-        formatted_names = (
-            patient_names[1].str.strip() + " " + patient_names[0].str.strip()
-        ).where(patient_names[1].notna(), formatted_names)
-    appointments["patient_name"] = formatted_names.where(formatted_names.notna(), np.nan)
+
+    if "VISIT_PROVIDER_NAME" not in appointments.columns:
+        df_model_output["VISIT_PROVIDER_NAME"] = np.nan
+
+    if "PAT_NAME" not in appointments.columns:
+        df_model_output["patient_name"] = np.nan
+    else:
+        patient_names = appointments["PAT_NAME"].astype("string").str.split(",", n=1, expand=True)
+        formatted_names = patient_names[0].str.strip()
+        if 1 in patient_names:
+            formatted_names = (
+                patient_names[1].str.strip() + " " + patient_names[0].str.strip()
+            ).where(patient_names[1].notna(), formatted_names)
+        appointments["patient_name"] = formatted_names.where(formatted_names.notna(), np.nan)
+        appointments = appointments.drop(columns=["PAT_NAME"])
+
+    appointments = appointments.rename(columns={"PATIENT_ID": "mrn"})
     appointments["mrn"] = pd.to_numeric(appointments["mrn"], errors="coerce")
     appointments = appointments.loc[appointments["mrn"].notna()].copy()
     appointments["mrn"] = appointments["mrn"].astype(df_model_output["mrn"].dtype)

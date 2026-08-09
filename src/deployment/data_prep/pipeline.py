@@ -155,7 +155,7 @@ def get_data(
 
     # Encode Regimens and Intent
     df = encode_regimens(df, model.model_features)
-    df = encode_primary_sites(df, config.cancer_site_list)
+    df = encode_primary_sites(df, model.model_features)
     df = encode_intent(df)
 
     # Remove / reorganize features for symptoms' models
@@ -405,12 +405,19 @@ def encode_intent(df):
     return df
 
 
-def encode_primary_sites(df, cancer_sites):
+def encode_primary_sites(df, model_features):
     cancer = df["primary_site"].str.get_dummies(",")
     cancer = cancer.add_prefix("cancer_site_")
 
     # assign cancer sites not seen during model training as cancer_site_other
-    other_sites = [site for site in cancer.columns if site not in cancer_sites]
+    known_sites = {
+        str(feat).removeprefix("cancer_site_")
+        for feat in model_features
+        if str(feat).startswith("cancer_site_") and str(feat) != "cancer_site_other"
+    }
+    other_sites = [
+        site for site in cancer.columns if site.removeprefix("cancer_site_") not in known_sites
+    ]
     cancer["cancer_site_other"] = cancer[other_sites].any(axis=1).astype(int)
     cancer = cancer.drop(columns=other_sites)
 

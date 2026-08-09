@@ -33,7 +33,7 @@ from make_clinical_dataset.epr.util import get_excluded_numbers
 from make_clinical_dataset.shared.constants import EPR_DRUG_COLS, LAB_COLS, UNIT_MAP
 from ml_common.constants import CANCER_CODE_MAP
 from sklearn.model_selection import StratifiedGroupKFold
-from .constants import COLUMN_PATTERNS, ED_LOOKBACK_OPTIONS, build_keep_columns_explicit
+from .constants import COLUMN_PATTERNS, ED_LOOKBACK_OPTIONS, META_COLS, build_keep_columns_explicit
 
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
@@ -66,6 +66,32 @@ def _clean_regimens(df):
     df["regimen"] = df["regimen"].str.strip()
     df["regimen"] = df["regimen"].replace(master_regimen_map)
     df = df[~df["regimen"].isin(regimens_to_exclude)]
+    return df
+
+
+def _fill_body_measurements(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute height/weight/body_surface_area from the other two when possible.
+
+    Uses the Mosteller formula (matching the deployment pipeline):
+    BSA = sqrt(height * weight / 3600). A missing value is only computed when
+    the other two of the three are both present.
+    """
+    cols = [c for c in ("height", "weight", "body_surface_area") if c in df.columns]
+    for col in cols:
+        others = [c for c in cols if c != col]
+        mask = df[col].isna() & df[others].notna().all(axis=1)
+        if col == "body_surface_area":
+            df.loc[mask, col] = np.sqrt(
+                (df.loc[mask, "height"] * df.loc[mask, "weight"]) / 3600
+            )
+        elif col == "weight":
+            df.loc[mask, col] = (
+                df.loc[mask, "body_surface_area"] ** 2 * 3600
+            ) / df.loc[mask, "height"]
+        else:  # height
+            df.loc[mask, col] = (
+                df.loc[mask, "body_surface_area"] ** 2 * 3600
+            ) / df.loc[mask, "weight"]
     return df
 
 
@@ -203,14 +229,19 @@ class PrepACUData(PrepData):
 
         if drop_cols_missing_thresh != -1:
             # drop features with high missingness
-            keep_cols = df.columns[df.columns.str.contains("target_")]
+            keep_cols = df.columns[
+                df.columns.str.contains("target_") | df.columns.isin(META_COLS)
+            ]
             df = drop_highly_missing_features(
                 df, missing_thresh=drop_cols_missing_thresh, keep_cols=keep_cols
             )
 
         if drop_rows_missing_thresh != -1:
             # drop samples with high missingness
-            keep_cols = df.columns[~df.columns.str.contains("target_|date|mrn")]
+            keep_cols = df.columns[
+                ~df.columns.str.contains("target_|date|mrn")
+                & ~df.columns.isin(META_COLS)
+            ]
             tmp = df[keep_cols].copy()
             # temporarily reverse the encoding for cancer-site
             cancer_site_cols = tmp.columns[tmp.columns.str.contains("cancer_site")]
@@ -230,11 +261,27 @@ class PrepACUData(PrepData):
             )
             df = df[mask]
 
+        # compute height/weight/body_surface_area from the other two when possible
+        df = _fill_body_measurements(df)
+
         # create missingness features
         df = get_missingness_features(df)
 
+        # safeguard: do not generate missingness indicators for meta columns
+        meta_missing_cols = df.columns[
+            df.columns.str.endswith("_is_missing")
+            & df.columns.str.replace("_is_missing$", "", regex=True).isin(META_COLS)
+        ]
+        df = df.drop(columns=meta_missing_cols)
+
         # collapse rare morphology and cancer sites into 'Other' category
         df = collapse_rare_categories(df, catcols=["cancer_site", "morphology"])
+
+        # TO-DO: adjust this to exclude META_COLS and columns that will be imputed
+        # drop rows with any remaining NaN outside of meta columns
+        # mask = df[df.columns[~df.columns.isin(META_COLS)]].notna().all(axis=1)
+        # get_excluded_numbers(df, mask, context=" with NaN in a non-meta feature")
+        # df = df[mask]
 
         return df
 
@@ -278,9 +325,12 @@ class PrepACUData(PrepData):
 
         # split into input features, output labels, and metainfo
         cols = data.columns
-        meta_cols = ["mrn", "split", "cv_folds"] + cols[
-            cols.str.contains("date")
-        ].tolist()
+        meta_cols = (
+            ["mrn", "split", "cv_folds"]
+            + [col for col in META_COLS if col in cols]
+            + cols[cols.str.contains("date")].tolist()
+        )
+        meta_cols = list(dict.fromkeys(meta_cols))
         targ_cols = cols[
             cols.str.contains("target_") & ~cols.str.contains("date")
         ].tolist()

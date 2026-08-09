@@ -1,10 +1,10 @@
 chemo_data_imputation:
   height:
     female_true: 160.0
-    female_false: 172.71428571428572
+    female_false: 173.0
   weight:
-    female_true: 61.1
-    female_false: 74.7
+    female_true: 60.8
+    female_false: 74.48333333333333
   line_of_therapy: 1
   cycle_number: 1
   source: v2
