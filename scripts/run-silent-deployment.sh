@@ -16,7 +16,7 @@ OUTPUTS_DIR="${OUTPUTS_DIR:-${PROJECT_DIR}/Outputs}"
 mkdir -p "${OUTPUTS_DIR}"
 
 command=(
-    python /app/src/main.py
+    python /app/src/deployment/main.py
     --start-date 20240904
     --end-date 20260430
     --model-anchor clinic

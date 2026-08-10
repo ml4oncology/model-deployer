@@ -1,4 +1,5 @@
 from ml_common.constants import CANCER_CODE_MAP
+from make_clinical_dataset.shared.constants import SYMP_COLS
 
 
 # TODO: Just create one large mapping
@@ -40,7 +41,7 @@ def clean_feature_name(name: str) -> str:
         code = name.split(" ")[-1]
         if code in CANCER_CODE_MAP:
             name = f"{name}, {CANCER_CODE_MAP[code]}"
-    elif name.startswith("ESAS "):
+    elif any(val in name.lower() for val in SYMP_COLS if 'ecog' not in val):
         # add 'score'
         if "Change" in name:
             name = name.replace("Change", "Score Change")

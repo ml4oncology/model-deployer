@@ -8,7 +8,7 @@ from datetime import timedelta
 
 import pandas as pd
 import numpy as np
-from deployer.data_prep.constants import DAILY_POSTFIX_MAP, FILL_VALS, PROJ_NAME
+from deployer.data_prep.constants import DAILY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.diagnosis import get_demographic_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
@@ -26,12 +26,13 @@ from make_clinical_dataset.epr.engineer import (get_change_since_prev_session,
 )
 from make_clinical_dataset.epr.prep import fill_missing_data_heuristically
 from make_clinical_dataset.shared import logger
+from make_clinical_dataset.shared.constants import LAB_CHANGE_COLS, LAB_COLS
 
 logger.setLevel(logging.WARNING)
 
 
 def build_features(
-    config: Config, data_dir: str, data_pull_day: str | None = None, anchor: str = "clinic", model_constants: dict = {}
+    config: Config, data_dir: str, data_pull_day: str | None = None, anchor: str = "clinic", model_constants: dict = {}, model_features=None,
 ) -> dict[str, pd.DataFrame]:
     postfix = DAILY_POSTFIX_MAP[anchor]
     biochem_file = f"{data_dir}/{PROJ_NAME}_biochemistry_{postfix}{data_pull_day}.csv"
@@ -51,14 +52,15 @@ def build_features(
         data_pull_day = pd.to_datetime(data_pull_day)
 
     feats = {}
-    feats["symptom"] = get_symptoms_data(esas_file)
+    rename_legacy = model_features is not None and any(f.startswith("esas_") or f == "patient_ecog" for f in model_features)
+    feats["symptom"] = get_symptoms_data(esas_file, rename_legacy=rename_legacy)
     feats["demographic"] = get_demographic_data(diagnosis_file, anchor)
     feats["treatment"] = get_treatment_data(chemo_file, 
                                             config, 
                                             data_pull_day, 
                                             anchor,
                                             "prediction", 
-                                            model_constants["trt_lookahead_window"])
+                                            model_constants["trt_lookahead_window_deployment"])
     feats["laboratory"] = get_lab_data(hema_file, biochem_file, anchor)
     feats["emergency"] = get_emergency_room_data(ed_file)
 
@@ -85,7 +87,9 @@ def get_data(
     }
 
     # Combine Features
-    df = combine_features(model.prep_cfg, feats, model.anchor, config.imputation_constants)
+    df = combine_features(
+        model.prep_cfg, feats, model.anchor, config.imputation_constants, model.ed_prior_visits_feature
+    )
     combined_mrns = pd.Index(df["mrn"].dropna().unique())
     missing_after_combine = demographic_mrns.difference(combined_mrns)
     if not missing_after_combine.empty:
@@ -104,7 +108,6 @@ def get_data(
     # Get changes between treatment sessions
     # NOTE: for clinic anchor, we are not keeping track of prev visits, so no changes are captured here...
     # TODO: We should simply get the prev changes since last lab visit, symptom survey, etc. and deprecate this function
-    df["hematocrit"] = None  # need to add this missing feature here. TODO: clean this up
     df = get_change_since_prev_session(df)
 
     if model.anchor == "treatment":
@@ -115,7 +118,16 @@ def get_data(
         df = df[mask]
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
-    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=FILL_VALS[model.anchor])
+    imputation_val = model.ed_visit_lookback_days
+    fill_vals = {
+        "days_since_prev_ED_visit": imputation_val,
+        "days_since_last_treatment": imputation_val,
+    }
+    df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
+    for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
+        if col in df.columns:
+            df.loc[df[col] < 0, col] = imputation_val
+            df[col] = df[col].clip(upper=imputation_val)
 
     # Get missingness features
     # NOTE: we filter out unused features later on in inference.py
@@ -142,8 +154,8 @@ def get_data(
     df['dashboard_regimen'] = df['regimen']
 
     # Encode Regimens and Intent
-    df = encode_regimens(df, config.gi_regimens)
-    df = encode_primary_sites(df, config.cancer_site_list)
+    df = encode_regimens(df, model.model_features)
+    df = encode_primary_sites(df, model.model_features)
     df = encode_intent(df)
 
     # Remove / reorganize features for symptoms' models
@@ -152,8 +164,15 @@ def get_data(
 
     # Recreate any missing columns
     missing_cols = [str(col) for col in model.model_features if col not in df.columns]
-    df[missing_cols] = 0
-    for col, val in FILL_VALS[model.anchor].items():
+
+    # Lab measurements with no data are missing (NaN), not zero-valued
+    lab_value_cols = [col for col in missing_cols if col in LAB_COLS or col in LAB_CHANGE_COLS]
+    for col in lab_value_cols:
+        df[col] = np.nan
+        df[f"{col}_is_missing"] = True
+
+    df[[col for col in missing_cols if col not in df.columns]] = 0
+    for col, val in fill_vals.items():
         if col in missing_cols:
             df[col] = val
 
@@ -180,7 +199,13 @@ def get_data(
     }
 
 
-def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imputation_constants: dict):
+def combine_features(
+    cfg: dict,
+    feats: dict[str, pd.DataFrame],
+    anchor: str,
+    imputation_constants: dict,
+    ed_prior_visits_feature: str,
+):
     """Combine the features into one unified dataset aligned on the specified anchor."""
     sym = feats["symptom"]
     dmg = feats["demographic"]
@@ -222,20 +247,48 @@ def combine_features(cfg: dict, feats: dict[str, pd.DataFrame], anchor: str, imp
 
     if not sym.empty:
         df = merge_closest_measurements(
-            df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window"]
+            df, sym, "assessment_date", "survey_date", time_window=cfg["symp_lookback_window_deployment"]
         )
     if not lab.empty:
-        df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window"])
+        df = merge_closest_measurements(df, lab, "assessment_date", "obs_date", time_window=cfg["lab_lookback_window_deployment"])
     if not erv.empty:
-        df = combine_event_to_main_data(
-            df,
-            erv,
-            "assessment_date",
-            "event_date",
-            event_name="ED_visit",
-            lookback_window=cfg["ed_visit_lookback_window"],
-            parallelize=False,
-        )
+        if ed_prior_visits_feature == "num_prior_ED_visits_within_1_year":
+            # NOTE: combine_event_to_main_data counts events with an inclusive .between() window, so a
+            # same-day event would be counted with days_since_prev_ED_visit == 0. That cannot occur in
+            # deployment: get_epic_arrival_dates only carries ED arrivals up to the day before the
+            # clinic date, so event_date == assessment_date is impossible here. This makes the
+            # inclusive 1-year count equivalent to the strict < lookback used at training time.
+            df = combine_event_to_main_data(
+                df,
+                erv,
+                "assessment_date",
+                "event_date",
+                event_name="ED_visit",
+                lookback_window=1,
+                parallelize=False,
+            )
+            assert "num_prior_ED_visits_within_1_years" in df.columns
+            df = df.rename(
+                columns={
+                    "num_prior_ED_visits_within_1_years": "num_prior_ED_visits_within_1_year"
+                }
+            )
+            # epr leaves missing counts as NaN (it 0-fills only the 5-year count during prep), which
+            # mean imputation would fill with a small non-zero training mean. A missing count means no
+            # prior ED visits, so explicitly 0-fill here.
+            df["num_prior_ED_visits_within_1_year"] = df[
+                "num_prior_ED_visits_within_1_year"
+            ].fillna(0)
+        else:
+            df = combine_event_to_main_data(
+                df,
+                erv,
+                "assessment_date",
+                "event_date",
+                event_name="ED_visit",
+                lookback_window=cfg["ed_visit_lookback_window_deployment"],
+                parallelize=False,
+            )
     df = add_engineered_features(df, "assessment_date")
 
     return df
@@ -337,24 +390,34 @@ def impute_treatment_values(
 
     return df
 
-def encode_regimens(df, regimen_data):
-    regimen_map = dict(regimen_data[["Regimen", "Regimen_Rename"]].to_numpy())
-    df["regimen"] = df["regimen"].map(regimen_map).fillna("regimen_other")
+def encode_regimens(df, model_features):
+    df["regimen"] = df["regimen"].str.replace(r'[()+\-/,]', '_', regex=True)
+    df["regimen"] = "regimen_" + df["regimen"]
+    df.loc[~df["regimen"].isin(model_features), "regimen"] = "regimen_other"
     df = pd.get_dummies(df, columns=["regimen"], prefix="", prefix_sep="")
     return df
 
 
 def encode_intent(df):
+    df = df.copy()
+    df["intent"] = df["intent"].str.lower()
     df = pd.get_dummies(df, columns=["intent"])
     return df
 
 
-def encode_primary_sites(df, cancer_sites):
+def encode_primary_sites(df, model_features):
     cancer = df["primary_site"].str.get_dummies(",")
     cancer = cancer.add_prefix("cancer_site_")
 
     # assign cancer sites not seen during model training as cancer_site_other
-    other_sites = [site for site in cancer.columns if site not in cancer_sites]
+    known_sites = {
+        str(feat).removeprefix("cancer_site_")
+        for feat in model_features
+        if str(feat).startswith("cancer_site_") and str(feat) != "cancer_site_other"
+    }
+    other_sites = [
+        site for site in cancer.columns if site.removeprefix("cancer_site_") not in known_sites
+    ]
     cancer["cancer_site_other"] = cancer[other_sites].any(axis=1).astype(int)
     cancer = cancer.drop(columns=other_sites)
 

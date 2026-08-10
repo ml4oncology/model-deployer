@@ -14,6 +14,18 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 
+def str_to_bool(value: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ("true", "1", "yes"):
+        return True
+    if value.lower() in ("false", "0", "no"):
+        return False
+    raise argparse.ArgumentTypeError(
+        f"Invalid boolean value: {value!r}. Use True/False."
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", type=str, default="20240904")
@@ -22,17 +34,18 @@ def parse_args():
     parser.add_argument("--dashboard-layout", type=str, choices=["portrait", "landscape"], default="portrait")
     parser.add_argument("--dashboard-font-scale", type=float, default=1.0)
     parser.add_argument(
-        "--disable-save-dashboard-png",
-        action="store_true",
-        help="Skip generating dashboard PNG files.",
+        "--save-dashboard-png",
+        type=str_to_bool,
+        default=True,
+        help="Generate dashboard PNG files. Default is True.",
     )
     parser.add_argument(
         "--subset-dashboard-patients",
-        action=argparse.BooleanOptionalAction,
+        type=str_to_bool,
         default=True,
         help="Generate dashboards only for the selected subset of patients. Default is True.",
     )
-    parser.add_argument("--run-on-silent-deployment", type=bool, default=False)
+    parser.add_argument("--run-on-silent-deployment", type=str_to_bool, default=False)
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")
@@ -49,7 +62,7 @@ if __name__ == "__main__":
     anchor = args.model_anchor
     dashboard_layout = args.dashboard_layout
     dashboard_font_scale = args.dashboard_font_scale
-    disable_save_dashboard_png = args.disable_save_dashboard_png
+    generate_dashboard_png = args.save_dashboard_png
     subset_dashboard_patients = args.subset_dashboard_patients
     run_on_silent_deployment = args.run_on_silent_deployment
     output_dir = args.output_dir
@@ -59,13 +72,15 @@ if __name__ == "__main__":
 
     # if run_on_silent_deployment, do not generate dashboard
     if run_on_silent_deployment:
-        disable_save_dashboard_png = True
+        generate_dashboard_png = False
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
     if not os.path.exists(f"{output_dir}/interim"):
         os.makedirs(f"{output_dir}/interim")
+    if not os.path.exists(f"{output_dir}/daily_inputs"):
+            os.makedirs(f"{output_dir}/daily_inputs")
 
     config = Config(info_dir=info_dir)
     model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, name="ED_visit")
@@ -75,7 +90,7 @@ if __name__ == "__main__":
     inputs, outputs, meta_data, dashboard_masks = [], [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
-        feats = build_features(config, data_dir, data_pull_date, model.anchor, model.prep_cfg)
+        feats = build_features(config, data_dir, data_pull_date, model.anchor, model.prep_cfg, model_features=model.model_features)
 
         if "error" in feats:
             print(feats["error"])
@@ -95,7 +110,7 @@ if __name__ == "__main__":
         )
 
         # store processed data
-        res["model_input"].to_csv(Path(output_dir) / f"input_{data_pull_date}_{anchor}.csv", index_label='idx')
+        res["model_input"].to_csv(Path(output_dir)/"daily_inputs"/f"input_{data_pull_date}_{anchor}.csv", index_label='idx')
 
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
@@ -149,6 +164,10 @@ if __name__ == "__main__":
     dashboard_inp = inp.loc[mask == 1].reset_index(drop=True)
     dashboard_meta = meta.loc[mask == 1].reset_index(drop=True)
 
+    # save inputs to check feature shift
+    dashboard_inp_with_keys = dashboard_inp.copy()
+    dashboard_inp_with_keys[['mrn', 'clinic_date']] = dashboard_meta[['mrn', 'clinic_date']].values
+
     out = out.merge(meta[['mrn', 'clinic_date', 'cancer']], on=['mrn', 'clinic_date'], how='left')
     out.to_csv(f"{output_dir}/output_{start_date}_{end_date}_{anchor}.csv", index_label='idx')
 
@@ -156,9 +175,10 @@ if __name__ == "__main__":
 
     if run_on_silent_deployment:
         dashboard_out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
+        dashboard_inp_with_keys.to_parquet(f"{output_dir}/silent_deployment_input_{anchor}.parquet", index=False)
 
     # Generate dashboard per patient
-    if not disable_save_dashboard_png:
+    if generate_dashboard_png:
         save_dashboard_png(
             model,
             dashboard_inp,

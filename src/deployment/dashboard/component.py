@@ -67,15 +67,15 @@ def create_model_overview():
         <div class="model-info-grid">
             <div class="model-info-section">
                 <div class="model-info-label">Model Name/Version</div>
-                <div class="model-info-value">AIM2REDUCE v1.0.0</div>
+                <div class="model-info-value">AIM2REDUCE v1.1.0</div>
             </div>
             <div class="model-info-section">
                 <div class="model-info-label">Date of Release</div>
-                <div class="model-info-value">Oct 15, 2024</div>
+                <div class="model-info-value">Aug 12, 2026</div>
             </div>
             <div class="model-info-section">
                 <div class="model-info-label">Model Type</div>
-                <div class="model-info-value">XGBoost</div>
+                <div class="model-info-value">Random Forest</div>
             </div>
             <div class="model-info-section">
                 <div class="model-info-label">Calibration</div>
@@ -84,18 +84,18 @@ def create_model_overview():
             <div class="model-info-section">
                 <div class="model-info-label">Dataset</div>
                 <div class="model-info-value">
-                    Train: 10,152 samples (1,927 GI pts, 2012-2018)<br>
-                    Test: 1,082 samples (389 GI pts, 2018-2020)<br>
-                    213 features
+                    Training: 22,533 GI treatments 2009-2023, 3,802 GI new treatment starts<br>
+                    Testing: 240 GI new treatment starts 2023-2024<br>
+                    Silent deployment: 521 GI new treatment starts 2024-2026
                 </div>
             </div>
             <div class="model-info-section">
                 <div class="model-info-label">Training Procedure</div>
-                <div class="model-info-value">3-fold stratified cross-validation</div>
+                <div class="model-info-value">5-fold stratified cross-validation</div>
             </div>
             <div class="model-info-section">
-                <div class="model-info-label">Test AUROC</div>
-                <div class="model-info-value">0.73</div>
+                <div class="model-info-label">AUROC</div>
+                <div class="model-info-value">0.76 (95% CI 0.67-0.83); Silent deployment 0.68 (95% CI 0.62-0.75)</div>
             </div>
         </div>
     </div>
