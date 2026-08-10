@@ -34,9 +34,10 @@ def parse_args():
     parser.add_argument("--dashboard-layout", type=str, choices=["portrait", "landscape"], default="portrait")
     parser.add_argument("--dashboard-font-scale", type=float, default=1.0)
     parser.add_argument(
-        "--disable-save-dashboard-png",
-        action="store_true",
-        help="Skip generating dashboard PNG files.",
+        "--save-dashboard-png",
+        type=str_to_bool,
+        default=True,
+        help="Generate dashboard PNG files. Default is True.",
     )
     parser.add_argument(
         "--subset-dashboard-patients",
@@ -61,7 +62,7 @@ if __name__ == "__main__":
     anchor = args.model_anchor
     dashboard_layout = args.dashboard_layout
     dashboard_font_scale = args.dashboard_font_scale
-    disable_save_dashboard_png = args.disable_save_dashboard_png
+    generate_dashboard_png = args.save_dashboard_png
     subset_dashboard_patients = args.subset_dashboard_patients
     run_on_silent_deployment = args.run_on_silent_deployment
     output_dir = args.output_dir
@@ -71,13 +72,15 @@ if __name__ == "__main__":
 
     # if run_on_silent_deployment, do not generate dashboard
     if run_on_silent_deployment:
-        disable_save_dashboard_png = True
+        generate_dashboard_png = False
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
     if not os.path.exists(f"{output_dir}/interim"):
         os.makedirs(f"{output_dir}/interim")
+    if not os.path.exists(f"{output_dir}/daily_inputs"):
+            os.makedirs(f"{output_dir}/daily_inputs")
 
     config = Config(info_dir=info_dir)
     model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, name="ED_visit")
@@ -107,7 +110,7 @@ if __name__ == "__main__":
         )
 
         # store processed data
-        res["model_input"].to_csv(Path(output_dir) / f"input_{data_pull_date}_{anchor}.csv", index_label='idx')
+        res["model_input"].to_csv(Path(output_dir)/"daily_inputs"/f"input_{data_pull_date}_{anchor}.csv", index_label='idx')
 
         inputs.append(res["model_input"])
         outputs.append(res["model_output"])
@@ -175,7 +178,7 @@ if __name__ == "__main__":
         dashboard_inp_with_keys.to_parquet(f"{output_dir}/silent_deployment_input_{anchor}.parquet", index=False)
 
     # Generate dashboard per patient
-    if not disable_save_dashboard_png:
+    if generate_dashboard_png:
         save_dashboard_png(
             model,
             dashboard_inp,
