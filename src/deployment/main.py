@@ -14,6 +14,18 @@ from tqdm import tqdm
 warnings.filterwarnings("ignore")
 
 
+def str_to_bool(value: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value.lower() in ("true", "1", "yes"):
+        return True
+    if value.lower() in ("false", "0", "no"):
+        return False
+    raise argparse.ArgumentTypeError(
+        f"Invalid boolean value: {value!r}. Use True/False."
+    )
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--start-date", type=str, default="20240904")
@@ -28,11 +40,11 @@ def parse_args():
     )
     parser.add_argument(
         "--subset-dashboard-patients",
-        action=argparse.BooleanOptionalAction,
+        type=str_to_bool,
         default=True,
         help="Generate dashboards only for the selected subset of patients. Default is True.",
     )
-    parser.add_argument("--run-on-silent-deployment", type=bool, default=False)
+    parser.add_argument("--run-on-silent-deployment", type=str_to_bool, default=False)
 
     parser.add_argument("--output-dir", type=str, default="./Outputs")
     parser.add_argument("--data-dir", type=str, default="./Data")

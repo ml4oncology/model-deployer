@@ -64,14 +64,13 @@ Optional dashboard arguments:
 - `--dashboard-layout {portrait,landscape}` controls the dashboard image layout. Default is `portrait`.
 - `--dashboard-font-scale FLOAT` scales clinician-facing dashboard text and histogram text proportionally. Default is `1.0`.
 - `--disable-save-dashboard-png` skips dashboard PNG generation. By default, dashboard PNGs are generated.
-- `--subset-dashboard-patients` limits dashboard generation to the selected patient subset. Default is `True`.
-- `--no-subset-dashboard-patients` disables subset filtering and generates dashboards for all patients.
+- `--subset-dashboard-patients {True,False}` controls whether dashboard generation is limited to the selected patient subset. Default is `True`.
 - `--run-on-silent-deployment` runs the code on silent deployment patients for baseline histogram in dashboard. Default is `False`.
 
 Example:
 ```bash
 python src/deployment/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --dashboard-font-scale 1.5
-python src/deployment/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --no-subset-dashboard-patients
+python src/deployment/main.py --start-date 20240904 --end-date 20250804 --model-anchor clinic --subset-dashboard-patients False
 ```
 
 # Running the evaluation pipeline
