@@ -95,7 +95,7 @@ def create_model_overview():
             </div>
             <div class="model-info-section">
                 <div class="model-info-label">AUROC</div>
-                <div class="model-info-value">0.76 (95% CI 0.67-0.83); Silent deployment 0.68 (95% CI 0.62-0.75)</div>
+                <div class="model-info-value">Test 0.76 (95% CI 0.67-0.83); Silent deployment 0.68 (95% CI 0.62-0.75)</div>
             </div>
         </div>
     </div>
