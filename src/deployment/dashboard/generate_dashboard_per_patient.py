@@ -97,6 +97,9 @@ def _build_dashboard_html(
     <div class="dashboard-section dashboard-section--bottom">
       <div class="dashboard-shap-section">
         <div class="section-title">Feature Contribution</div>
+        <div class="model-info-value dashboard-shap-disclaimer">
+          To make predictions, the feature values are processed from values available within UHN Epic (for example, days since last ED visit is specific to UHN EDs and capped at 365). Please refer to the medical record for accurate unprocessed values.
+        </div>
         <div class="dashboard-shap-panel">
           <div class="dashboard-shap-image">{shap_img_tag}</div>
         </div>
