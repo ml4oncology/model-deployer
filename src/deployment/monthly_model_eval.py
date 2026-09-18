@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats.contingency import odds_ratio
 from sklearn.calibration import calibration_curve
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import brier_score_loss
 from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.emergency import get_emergency_room_data
@@ -23,6 +25,72 @@ from sklearn.metrics import roc_auc_score
 warnings.filterwarnings("ignore")
 
 DATE_COL_MAP = {"treatment": "treatment_date", "clinic": "clinic_date"}
+
+# ---------------------------------------------------------------------------
+# Shared plot style settings (kept consistent across all figures so they can
+# be dropped into a manuscript together)
+# ---------------------------------------------------------------------------
+FONT_SANS = ["Arial", "DejaVu Sans"]
+FONT_SIZE_LABEL = 13
+FONT_SIZE_TICK = 11
+FONT_SIZE_LEGEND = 11
+FONT_SIZE_ANNOTATION = 10
+
+COLOR_PRIMARY = "#1565C0"    # navy - main line/bar color
+COLOR_SECONDARY = "#90CAF9"  # sky - shaded regions / secondary bars
+COLOR_REFERENCE = "#C62828"  # red - reference lines / highlighted estimates
+
+SAVEFIG_DPI = 300
+
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": FONT_SANS,
+    "font.size": FONT_SIZE_TICK,
+    "axes.labelsize": FONT_SIZE_LABEL,
+    "axes.titlesize": FONT_SIZE_LABEL,
+    "legend.fontsize": FONT_SIZE_LEGEND,
+    "axes.grid": False,
+    "savefig.dpi": SAVEFIG_DPI,
+})
+
+
+def style_axis(ax):
+    """Apply shared manuscript-style axis formatting."""
+    ax.grid(False)
+
+    # Remove the default box
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Use bottom and left spines as the x- and y-axes
+    ax.spines["bottom"].set_visible(True)
+    ax.spines["left"].set_visible(True)
+
+    ax.spines["bottom"].set_position(("outward", 0))
+    ax.spines["left"].set_position(("outward", 0))
+
+    ax.spines["bottom"].set_linewidth(1.0)
+    ax.spines["left"].set_linewidth(1.0)
+    ax.spines["bottom"].set_color("black")
+    ax.spines["left"].set_color("black")
+
+    # Make sure ticks and tick labels are visible
+    ax.tick_params(
+        axis="both",
+        which="both",
+        bottom=True,
+        left=True,
+        labelbottom=True,
+        labelleft=True,
+        direction="out",
+        length=4,
+        width=1,
+    )
+
+    ax.tick_params(axis="x", top=False, labeltop=False)
+    ax.tick_params(axis="y", right=False, labelright=False)
+
+    return ax
 
 
 def filter_intent_to_treat(df, chemo_file, config, anchor, date_col):
@@ -113,7 +181,7 @@ def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d
     return pd.DataFrame(results), counts
 
 
-def plot_odds_ratios(results_df, title="Odds Ratio of ED Visit by Predicted Risk Quartile"):
+def plot_odds_ratios(results_df):
     fig, ax = plt.subplots(figsize=(7, 5))
 
     quartiles = results_df["quartile"]
@@ -122,24 +190,36 @@ def plot_odds_ratios(results_df, title="Odds Ratio of ED Visit by Predicted Risk
     lower_err = (ors - results_df["ci_low"]).fillna(0)
     upper_err = (results_df["ci_high"] - ors).fillna(0)
 
-    bars = ax.bar(quartiles, ors, color="#4C72B0", edgecolor="black")
+    bars = ax.bar(quartiles, ors, color=COLOR_PRIMARY, edgecolor="black")
     ax.errorbar(quartiles, ors, yerr=[lower_err, upper_err],
                 fmt="none", ecolor="black", capsize=5, linewidth=1.2)
 
-    ax.axhline(1.0, color="red", linestyle="--", linewidth=1, label="OR = 1 (reference)")
+    ax.axhline(1.0, color=COLOR_REFERENCE, linestyle="--", linewidth=1, label="OR = 1 (reference)")
 
     ax.set_yscale("log")
     ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:g}"))
 
-    ax.set_ylabel("Odds Ratio (95% CI, log scale)")
-    ax.set_xlabel("Predicted Risk Quartile")
-    ax.set_title(title)
+    ax.set_ylabel("odds ratio (95% CI, log scale)")
+    ax.set_xlabel("predicted ED risk quartile")
 
-    for bar, or_val in zip(bars, ors):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.05,
-                f"{or_val:.2f}", ha="center", va="bottom", fontsize=9)
+    # Annotate each bar with its OR and 95% CI, placed above the CI whisker
+    # (instead of above the bar, where it used to overlap the error bar).
+    for bar, or_val, ci_low, ci_high in zip(bars, ors, results_df["ci_low"], results_df["ci_high"]):
+        if np.isnan(ci_high):
+            label = f"{or_val:.2f} (ref)"
+            y_pos = bar.get_height()
+        else:
+            label = f"{or_val:.2f} ({ci_low:.2f}\u2013{ci_high:.2f})"
+            y_pos = ci_high
+        ax.text(bar.get_x() + bar.get_width() / 2, y_pos * 1.05,
+                label, ha="center", va="bottom", fontsize=FONT_SIZE_ANNOTATION)
+
+    # Leave extra headroom on the log-scaled y-axis so the top annotation isn't clipped
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.2)
 
     ax.legend()
+    style_axis(ax)
     plt.tight_layout()
     return fig
 
@@ -151,23 +231,120 @@ def plot_calibration(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d",
 
     prob_true, prob_pred = calibration_curve(y_true, y_prob, n_bins=n_bins, strategy=strategy)
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 8),
-                                   gridspec_kw={"height_ratios": [3, 1]}, sharex=True)
+    fig, ax = plt.subplots(figsize=(6, 6))
 
-    ax1.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Perfect calibration")
-    ax1.plot(prob_pred, prob_true, marker="o", color="#4C72B0", label="Model")
-    ax1.set_ylabel("Observed frequency")
-    ax1.set_title("Calibration Plot (Reliability Diagram)")
-    ax1.legend()
-    ax1.set_xlim(0, 1)
-    ax1.set_ylim(0, 1)
+    ax.plot([0, 1], [0, 1], linestyle="--", color="gray", label="perfect calibration")
+    ax.plot(prob_pred, prob_true, marker="o", color=COLOR_PRIMARY, label="model")
+    ax.set_xlabel("predicted probability")
+    ax.set_ylabel("observed frequency")
+    ax.legend()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
 
-    ax2.hist(y_prob, bins=30, color="#4C72B0", edgecolor="black", alpha=0.7)
-    ax2.set_xlabel("Predicted probability")
-    ax2.set_ylabel("Count")
-
+    style_axis(ax)
     plt.tight_layout()
     return fig
+
+
+def plot_prediction_histogram(df, prob_col="ed_pred_prob", n_bins=30):
+    """Standalone histogram of predicted probabilities (previously the bottom
+    panel of the calibration plot; split out into its own figure)."""
+    y_prob = df[prob_col].values
+
+    fig, ax = plt.subplots(figsize=(6, 3))
+    ax.hist(y_prob, bins=n_bins, color=COLOR_PRIMARY, edgecolor="black", alpha=0.7)
+    ax.set_xlabel("predicted probability")
+    ax.set_ylabel("count")
+    ax.set_xlim(0, 1)
+
+    style_axis(ax)
+    plt.tight_layout()
+    return fig
+
+
+def calibration_intercept_slope(y_true, y_prob):
+    """Calibration intercept & slope from a logistic regression of the outcome
+    on the logit of the predicted probability (Cox calibration regression).
+    Slope = 1 and intercept = 0 indicate perfect calibration.
+    """
+    def logit(p, eps=1e-15):
+        """
+        Numerically stable logit transformation.
+
+        Probabilities are clipped away from exactly 0 and 1
+        because logit(0) and logit(1) are undefined.
+        """
+        p = np.asarray(p, dtype=float)
+        p = np.clip(p, eps, 1 - eps)
+        return np.log(p / (1 - p))
+
+    # Transform predicted probabilities to log-odds.
+    logit_p = logit(y_prob)
+
+    lr = LogisticRegression(solver="lbfgs", penalty=None)
+    lr.fit(logit_p.reshape(-1, 1), y_true)
+
+    slope = lr.coef_[0][0]
+    intercept = lr.intercept_[0]
+    return intercept, slope
+
+
+def expected_calibration_error(y_true, y_prob, n_bins=10):
+    """Standard equal-width-bin Expected Calibration Error (ECE)."""
+    # note: this is dependent on the number of bins
+    bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_ids = np.clip(np.digitize(y_prob, bin_edges) - 1, 0, n_bins - 1)
+
+    n = len(y_true)
+    ece = 0.0
+    for b in range(n_bins):
+        mask = bin_ids == b
+        if not mask.any():
+            continue
+        bin_conf = y_prob[mask].mean()
+        bin_acc = y_true[mask].mean()
+        ece += (mask.sum() / n) * abs(bin_acc - bin_conf)
+    return ece
+
+
+def compute_calibration_metrics(y_true, y_prob, n_bins=10):
+    intercept, slope = calibration_intercept_slope(y_true, y_prob)
+    return {
+        "calibration_intercept": intercept,
+        "calibration_slope": slope,
+        "brier_score": brier_score_loss(y_true, y_prob),
+        "ece": expected_calibration_error(y_true, y_prob, n_bins=n_bins),
+    }
+
+
+def bootstrap_calibration_metrics_ci(y_true, y_prob, n_boot=1000, random_state=42, n_bins=10, ci=95):
+    """Percentile bootstrap 95% CIs for calibration intercept, slope, Brier
+    score, and ECE."""
+    rng = np.random.default_rng(random_state)
+    n = len(y_true)
+    lower_pct = (100 - ci) / 2
+    upper_pct = 100 - lower_pct
+
+    boot_vals = {"calibration_intercept": [], "calibration_slope": [], "brier_score": [], "ece": []}
+
+    i = 0
+    while i < n_boot:
+        idx = rng.integers(0, n, n)
+        y_true_bs = y_true[idx]
+        y_prob_bs = y_prob[idx]
+        # a resample with only one class can't produce a calibration curve; redraw
+        if len(np.unique(y_true_bs)) < 2:
+            continue
+        m = compute_calibration_metrics(y_true_bs, y_prob_bs, n_bins=n_bins)
+        for k, v in m.items():
+            boot_vals[k].append(v)
+        i += 1
+
+    return {
+        k: (np.percentile(v, lower_pct), np.percentile(v, upper_pct))
+        for k, v in boot_vals.items()
+    }
+
 
 def bootstrap_auc_distribution(y_true, y_pred, n_boot=1000, random_state=42):
     """Generate a bootstrap distribution of AUC estimates via resampling with replacement."""
@@ -191,15 +368,16 @@ def bootstrap_auc_distribution(y_true, y_pred, n_boot=1000, random_state=42):
 def plot_auc_bootstrap_distribution(boot_aucs, auc_estimate, title="Bootstrap Distribution of AUC"):
     fig, ax = plt.subplots(figsize=(7, 5))
 
-    ax.hist(boot_aucs, bins=30, color="#4C72B0", edgecolor="black", alpha=0.8)
-    ax.axvline(auc_estimate, color="red", linestyle="--", linewidth=1.5,
+    ax.hist(boot_aucs, bins=30, color=COLOR_PRIMARY, edgecolor="black", alpha=0.8)
+    ax.axvline(auc_estimate, color=COLOR_REFERENCE, linestyle="--", linewidth=1.5,
                label=f"AUC estimate = {auc_estimate:.3f}")
 
-    ax.set_xlabel("Bootstrapped AUC")
-    ax.set_ylabel("Frequency")
+    ax.set_xlabel("bootstrapped AUC")
+    ax.set_ylabel("frequency")
     ax.set_title(title)
     ax.legend()
 
+    style_axis(ax)
     plt.tight_layout()
     return fig
 
@@ -314,45 +492,42 @@ if __name__ == "__main__":
     auroc_upper = auroc_interval.upper
     conf_level = int(ci_data["conf"]["roc"]["level"] * 100)
 
+    print(f"\nAUC = {auroc_val:.4f} (95% CI: {auroc_lower:.4f}-{auroc_upper:.4f})")
+
     region = ci_data["roc"]["region"]
     upper_xy = np.column_stack([region.upper_fpr, region.upper_tpr])
     lower_xy = np.column_stack([region.lower_fpr[::-1], region.lower_tpr[::-1]])
     ci_polygon_xy = np.vstack([upper_xy, lower_xy])
-
-    NAVY = "#1565C0"
-    SKY = "#90CAF9"
 
     auroc_fig, ax = plt.subplots(figsize=(7, 6))
     auroc_fig.patch.set_facecolor("#FAFAFA")
     ax.set_facecolor("#F7F9FC")
 
     ci_patch = mpatches.Polygon(
-        ci_polygon_xy, closed=True, facecolor=SKY, edgecolor="none", alpha=0.35,
+        ci_polygon_xy, closed=True, facecolor=COLOR_SECONDARY, edgecolor="none", alpha=0.35,
         label=f"{conf_level}% confidence region",
     )
     ax.add_patch(ci_patch)
     ax.plot([0, 1], [0, 1], "--", color="#9E9E9E", linewidth=1.5) #, label="No-skill (AUC = 0.50)"
     ax.plot(
-        fpr_vals, tpr_vals, color=NAVY, linewidth=2.5,
+        fpr_vals, tpr_vals, color=COLOR_PRIMARY, linewidth=2.5,
         label=f"AUC = {auroc_val:.3f}  (95% CI: {auroc_lower:.3f}–{auroc_upper:.3f})",
     )
 
-    ax.set_xlabel("False Positive Rate (1 − Specificity)", fontsize=13)
-    ax.set_ylabel("True Positive Rate (Sensitivity)", fontsize=13)
-    ax.set_title(
-        f"ROC Curve — {anchor.title()}-Anchored Model\n{start_date} to {end_date}",
-        fontsize=14, fontweight="bold", pad=12,
-    )
+    ax.set_xlabel("false positive rate (1 − specificity)", fontsize=FONT_SIZE_LABEL)
+    ax.set_ylabel("true positive rate (sensitivity)", fontsize=FONT_SIZE_LABEL)
+    # ax.set_title(
+    #     f"ROC Curve — {anchor.title()}-Anchored Model\n{start_date} to {end_date}",
+    #     fontsize=14, fontweight="bold", pad=12,
+    # )
     ax.set_xlim([0, 1])
     ax.set_ylim([0, 1.02])
-    ax.legend(loc="lower right", fontsize=11, framealpha=0.95, edgecolor="#E0E0E0")
-    ax.grid(True, linestyle="--", linewidth=0.5, alpha=0.5, color="#B0BEC5")
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.tick_params(labelsize=11)
+    ax.legend(loc="lower right", fontsize=FONT_SIZE_LEGEND, framealpha=0.95, edgecolor="#E0E0E0")
+    style_axis(ax)
 
     plt.tight_layout()
     auroc_plot_file = f"{anchor}_auroc_ci.png"
-    auroc_fig.savefig(f"{output_dir}/{auroc_plot_file}", bbox_inches="tight", dpi=150)
+    auroc_fig.savefig(f"{output_dir}/{auroc_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(auroc_fig)
     print(f"AUROC plot saved to {auroc_plot_file}.")
 
@@ -364,7 +539,7 @@ if __name__ == "__main__":
         title=f"Bootstrap Distribution of AUC — {anchor.title()}-Anchored Model",
     )
     boot_plot_file = f"{anchor}_auc_bootstrap.png"
-    boot_fig.savefig(f"{output_dir}/{boot_plot_file}", bbox_inches="tight", dpi=150)
+    boot_fig.savefig(f"{output_dir}/{boot_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(boot_fig)
     print(f"AUC bootstrap distribution plot saved to {boot_plot_file}.")
 
@@ -372,9 +547,15 @@ if __name__ == "__main__":
 
     cal_fig = plot_calibration(df, prob_col=pred_col, outcome_col=label_col)
     cal_plot_file = f"{anchor}_calibration.png"
-    cal_fig.savefig(f"{output_dir}/{cal_plot_file}", bbox_inches="tight", dpi=150)
+    cal_fig.savefig(f"{output_dir}/{cal_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(cal_fig)
     print(f"Calibration plot saved to {cal_plot_file}.")
+
+    hist_fig = plot_prediction_histogram(df, prob_col=pred_col)
+    hist_plot_file = f"{anchor}_prediction_histogram.png"
+    hist_fig.savefig(f"{output_dir}/{hist_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
+    plt.close(hist_fig)
+    print(f"Prediction histogram saved to {hist_plot_file}.")
 
     or_df, quartile_counts = quartile_odds_ratios(df, prob_col=pred_col, outcome_col=label_col)
 
@@ -389,9 +570,35 @@ if __name__ == "__main__":
 
     or_fig = plot_odds_ratios(or_df)
     or_plot_file = f"{anchor}_odds_ratios.png"
-    or_fig.savefig(f"{output_dir}/{or_plot_file}", bbox_inches="tight", dpi=150)
+    or_fig.savefig(f"{output_dir}/{or_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(or_fig)
     print(f"Odds ratio plot saved to {or_plot_file}.")
+
+    ######################  Calibration Metrics ###########################
+
+    cal_metrics = compute_calibration_metrics(y_true, y_pred, n_bins=10)
+    print("\nCalibration metrics:")
+    print(f"  Calibration intercept: {cal_metrics['calibration_intercept']:.4f}")
+    print(f"  Calibration slope:     {cal_metrics['calibration_slope']:.4f}")
+    print(f"  Brier score:           {cal_metrics['brier_score']:.4f}")
+    print(f"  ECE:                   {cal_metrics['ece']:.4f}")
+
+    print("\nComputing bootstrap 95% CIs for calibration metrics...")
+    cal_metric_cis = bootstrap_calibration_metrics_ci(
+        y_true, y_pred, n_boot=1000, random_state=42, n_bins=10,
+    )
+    for metric_name, (lo, hi) in cal_metric_cis.items():
+        print(f"  {metric_name}: {cal_metrics[metric_name]:.4f} (95% CI: {lo:.4f}-{hi:.4f})")
+
+    cal_metrics_df = pd.DataFrame([{
+        "Anchor": anchor,
+        **cal_metrics,
+        **{f"{k} CI Low": ci_low for k, (ci_low, ci_high) in cal_metric_cis.items()},
+        **{f"{k} CI High": ci_high for k, (ci_low, ci_high) in cal_metric_cis.items()},
+    }])
+    cal_metrics_file = f"{anchor}_calibration_metrics.csv"
+    cal_metrics_df.to_csv(f"{output_dir}/{cal_metrics_file}", index=False)
+    print(f"Calibration metrics saved to {cal_metrics_file}.")
 
     ######################  Save Output ###########################
     pd.DataFrame(model_results).to_csv(f"{output_dir}/{perf_file}", index=False)
