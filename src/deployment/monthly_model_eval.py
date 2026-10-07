@@ -135,7 +135,11 @@ def filter_intent_to_treat(df, chemo_file, config, anchor, date_col):
         # & (fwd_merge[date_col] != fwd_merge["actual_trt_date"])
     )
 
-    return df.loc[good].copy()
+    df_eval = fwd_merge.loc[good].copy()
+    df_eval.sort_values(date_col, inplace=True)
+    df_eval = df_eval.groupby(['mrn', 'actual_trt_date']).first().reset_index()
+
+    return df_eval
 
 
 def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d"):
