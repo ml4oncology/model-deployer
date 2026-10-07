@@ -103,6 +103,7 @@ if __name__ == "__main__":
             model,
             data,
             feats['demographic'],
+            feats['treatment'],
             thresholds,
             pred_fn=None,
             data_dir=data_dir,
@@ -164,17 +165,16 @@ if __name__ == "__main__":
     dashboard_inp = inp.loc[mask == 1].reset_index(drop=True)
     dashboard_meta = meta.loc[mask == 1].reset_index(drop=True)
 
-    # save inputs to check feature shift
-    dashboard_inp_with_keys = dashboard_inp.copy()
-    dashboard_inp_with_keys[['mrn', 'clinic_date']] = dashboard_meta[['mrn', 'clinic_date']].values
-
-    out = out.merge(meta[['mrn', 'clinic_date', 'cancer']], on=['mrn', 'clinic_date'], how='left')
+    out = out.merge(meta[['mrn', 'clinic_date', 'cancer', 'age', 'gender', 'intent']], on=['mrn', 'clinic_date'], how='left')
     out.to_csv(f"{output_dir}/output_{start_date}_{end_date}_{anchor}.csv", index_label='idx')
 
     dashboard_out = out.loc[mask == 1].reset_index(drop=True)
 
     if run_on_silent_deployment:
         dashboard_out.to_csv(f"{output_dir}/silent_deployment_output_{anchor}.csv", index=False)
+        # save inputs to check feature shift
+        dashboard_inp_with_keys = dashboard_inp.copy()
+        dashboard_inp_with_keys[['mrn', 'clinic_date']] = dashboard_meta[['mrn', 'clinic_date']].values
         dashboard_inp_with_keys.to_parquet(f"{output_dir}/silent_deployment_input_{anchor}.parquet", index=False)
 
     # Generate dashboard per patient
