@@ -8,9 +8,9 @@ from typing import Callable, TypeVar
 
 import numpy as np
 import pandas as pd
-from deployer.loader import Model
+from deployer.data_prep.cancer_groups import to_cancer_group
 from deployer.data_prep.constants import PROJ_NAME
-from ml_common.constants import CANCER_CODE_MAP
+from deployer.loader import Model
 from sklearn.base import BaseEstimator
 from dateutil.relativedelta import relativedelta
 
@@ -39,7 +39,7 @@ def _compute_demographic_info(df_demographic: pd.DataFrame,
         axis=1
     )
     df_model_output["gender"] = df_model_output["female"].astype(int).map({1: "Female", 0: "Male"})
-    df_model_output["cancer"] = df_model_output["primary_site"].map(CANCER_CODE_MAP).fillna("Other").str.split(" ").str[0]
+    df_model_output["cancer"] = df_model_output["primary_site"].map(to_cancer_group)
 
     return df_model_output[['mrn', 'clinic_date', 'age', 'gender', 'cancer', 'intent']].copy()
 

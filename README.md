@@ -57,6 +57,7 @@ In the home directory, subdirectories `Models`, `Infos`, and `Data` needs to be 
   When switching to a new model, place the new files in `Models/` and `Infos/Prep/`, then update the filenames in `model_manifest.yaml`.
 - `Infos` must contain the regimen dictionary mapping and exclusion list `master_regimen_map.csv` as well as a subdirectory `Prep` which contains the config files, data pre-processing modules, and processed input data from the retrospective period. 
 - `Data` contains live EHR-pulled data everyday during deployment.
+- `src/deployment/data_prep/cancer_groups.yaml` maps the considered ICD-O-3 primary site codes — only the ones used in training — to the cancer groups used for dashboard display and subgroup analysis. Keep this list consistent with the `cancer_site_*` codes of the deployed model: `Model` raises an error at load time if the model uses a code missing from the list.
 
 ## E-mail alarm pipeline
 The e-mail alerts sent to the oncologist contain a dashboard specific to a patient. Dashboard generation uses the silent deployment baseline file. To create that baseline, first run 
