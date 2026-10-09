@@ -166,6 +166,8 @@ if __name__ == "__main__":
     dashboard_meta = meta.loc[mask == 1].reset_index(drop=True)
 
     out = out.merge(meta[['mrn', 'clinic_date', 'cancer', 'age', 'gender', 'intent']], on=['mrn', 'clinic_date'], how='left')
+    # add mask as a column to out
+    out['first_trt'] = mask.values
     out.to_csv(f"{output_dir}/output_{start_date}_{end_date}_{anchor}.csv", index_label='idx')
 
     dashboard_out = out.loc[mask == 1].reset_index(drop=True)
