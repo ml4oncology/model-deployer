@@ -26,6 +26,14 @@ warnings.filterwarnings("ignore")
 
 DATE_COL_MAP = {"treatment": "treatment_date", "clinic": "clinic_date"}
 
+
+def output_name(prefix, anchor, suffix):
+    """Build an output filename prefixed by `prefix`, ensuring the anchor
+    appears exactly once (no duplicated anchor token)."""
+    if anchor not in prefix.split("_"):
+        prefix = f"{prefix}_{anchor}"
+    return f"{prefix}_{suffix}"
+
 # ---------------------------------------------------------------------------
 # Shared plot style settings (kept consistent across all figures so they can
 # be dropped into a manuscript together)
@@ -135,7 +143,11 @@ def filter_intent_to_treat(df, chemo_file, config, anchor, date_col):
         # & (fwd_merge[date_col] != fwd_merge["actual_trt_date"])
     )
 
-    return df.loc[good].copy()
+    df_eval = fwd_merge.loc[good].copy()
+    df_eval.sort_values(date_col, inplace=True)
+    df_eval = df_eval.groupby(['mrn', 'actual_trt_date']).first().reset_index()
+
+    return df_eval
 
 
 def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d"):
@@ -409,8 +421,9 @@ if __name__ == "__main__":
     model_dir = args.model_dir
 
     prediction_file_path = args.prediction_file_path
-    pred_file_ED = f"{anchor}_pred_w_ED_labels.csv"
-    perf_file = f"{anchor}_model_perf.csv"
+    pred_prefix = os.path.splitext(os.path.basename(prediction_file_path))[0] if prediction_file_path else anchor
+    pred_file_ED = output_name(pred_prefix, anchor, "pred_w_ED_labels.csv")
+    perf_file = output_name(pred_prefix, anchor, "model_perf.csv")
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -526,7 +539,7 @@ if __name__ == "__main__":
     style_axis(ax)
 
     plt.tight_layout()
-    auroc_plot_file = f"{anchor}_auroc_ci.png"
+    auroc_plot_file = output_name(pred_prefix, anchor, "auroc_ci.png")
     auroc_fig.savefig(f"{output_dir}/{auroc_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(auroc_fig)
     print(f"AUROC plot saved to {auroc_plot_file}.")
@@ -538,7 +551,7 @@ if __name__ == "__main__":
         boot_aucs, auroc_val,
         title=f"Bootstrap Distribution of AUC — {anchor.title()}-Anchored Model",
     )
-    boot_plot_file = f"{anchor}_auc_bootstrap.png"
+    boot_plot_file = output_name(pred_prefix, anchor, "auc_bootstrap.png")
     boot_fig.savefig(f"{output_dir}/{boot_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(boot_fig)
     print(f"AUC bootstrap distribution plot saved to {boot_plot_file}.")
@@ -546,13 +559,13 @@ if __name__ == "__main__":
     ######################  Calibration & Odds Ratio Plots ###########################
 
     cal_fig = plot_calibration(df, prob_col=pred_col, outcome_col=label_col)
-    cal_plot_file = f"{anchor}_calibration.png"
+    cal_plot_file = output_name(pred_prefix, anchor, "calibration.png")
     cal_fig.savefig(f"{output_dir}/{cal_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(cal_fig)
     print(f"Calibration plot saved to {cal_plot_file}.")
 
     hist_fig = plot_prediction_histogram(df, prob_col=pred_col)
-    hist_plot_file = f"{anchor}_prediction_histogram.png"
+    hist_plot_file = output_name(pred_prefix, anchor, "prediction_histogram.png")
     hist_fig.savefig(f"{output_dir}/{hist_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(hist_fig)
     print(f"Prediction histogram saved to {hist_plot_file}.")
@@ -569,7 +582,7 @@ if __name__ == "__main__":
     print(f"  {'Total':<12} {'':<16} {quartile_counts['n'].sum():<12}\n")
 
     or_fig = plot_odds_ratios(or_df)
-    or_plot_file = f"{anchor}_odds_ratios.png"
+    or_plot_file = output_name(pred_prefix, anchor, "odds_ratios.png")
     or_fig.savefig(f"{output_dir}/{or_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(or_fig)
     print(f"Odds ratio plot saved to {or_plot_file}.")
@@ -596,7 +609,7 @@ if __name__ == "__main__":
         **{f"{k} CI Low": ci_low for k, (ci_low, ci_high) in cal_metric_cis.items()},
         **{f"{k} CI High": ci_high for k, (ci_low, ci_high) in cal_metric_cis.items()},
     }])
-    cal_metrics_file = f"{anchor}_calibration_metrics.csv"
+    cal_metrics_file = output_name(pred_prefix, anchor, "calibration_metrics.csv")
     cal_metrics_df.to_csv(f"{output_dir}/{cal_metrics_file}", index=False)
     print(f"Calibration metrics saved to {cal_metrics_file}.")
 

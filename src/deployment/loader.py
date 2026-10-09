@@ -5,6 +5,7 @@ import yaml
 from make_clinical_dataset.shared.constants import DEFAULT_CONFIG_PATH
 from ml_common.util import load_pickle
 
+from deployer.data_prep.cancer_groups import validate_model_site_codes
 from deployer.data_prep.constants import ED_VISIT_COUNT_LOOKBACK_DAYS
 
 # Note: this is just temporary so that the saved pickled model
@@ -59,6 +60,7 @@ class Model:
         if "orig_x" in manifest:
             self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
+        validate_model_site_codes(self.model_features)
 
         # Inference reorders inputs to fold-0's feature order and scores every fold
         # positionally, so all folds must agree on it.

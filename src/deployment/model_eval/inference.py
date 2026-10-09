@@ -8,9 +8,9 @@ from typing import Callable, TypeVar
 
 import numpy as np
 import pandas as pd
-from deployer.loader import Model
+from deployer.data_prep.cancer_groups import to_cancer_group
 from deployer.data_prep.constants import PROJ_NAME
-from ml_common.constants import CANCER_CODE_MAP
+from deployer.loader import Model
 from sklearn.base import BaseEstimator
 from dateutil.relativedelta import relativedelta
 
@@ -24,18 +24,24 @@ def predict(data: pd.DataFrame, models: list[ScikitModel]):
     # average across the folds
     return np.mean([m.predict_proba(data)[:, 1] for m in models], axis=0)
 
-def _compute_demographic_info(df_demographic: pd.DataFrame, 
+def _compute_demographic_info(df_demographic: pd.DataFrame,
+                              df_treatment: pd.DataFrame,
                               df_model_output: pd.DataFrame) -> pd.DataFrame:
-    
+
     df_model_output = df_model_output.merge(df_demographic, how="left", on=["mrn"])
+    # intent is sourced from the chemo frame: encode_intent() in the data prep
+    # pipeline one-hot encodes it away before the model input frame reaches here.
+    # Values are already cleaned/uppercased by clean_treatment_data (chemo.py:67).
+    intent = df_treatment[["mrn", "intent"]].drop_duplicates(subset=["mrn"])
+    df_model_output = df_model_output.merge(intent, how="left", on=["mrn"])
     df_model_output["age"] = df_model_output.apply(
         lambda row: relativedelta(row['clinic_date'], row['date_of_birth']).years,
         axis=1
     )
     df_model_output["gender"] = df_model_output["female"].astype(int).map({1: "Female", 0: "Male"})
-    df_model_output["cancer"] = df_model_output["primary_site"].map(CANCER_CODE_MAP).fillna("Other").str.split(" ").str[0]
+    df_model_output["cancer"] = df_model_output["primary_site"].map(to_cancer_group)
 
-    return df_model_output[['mrn', 'clinic_date', 'age', 'gender', 'cancer']].copy()
+    return df_model_output[['mrn', 'clinic_date', 'age', 'gender', 'cancer', 'intent']].copy()
 
 
 def _add_appointment_info(
@@ -86,6 +92,7 @@ def get_model_output(
     model: Model,
     df: pd.DataFrame,
     demographic_info: pd.DataFrame, 
+    treatment_info: pd.DataFrame,
     thresholds: pd.DataFrame,
     pred_fn: Callable | None = None,
     data_dir: str | None = None,
@@ -128,7 +135,7 @@ def get_model_output(
     model_output["ed_pred_prob"] = pred_fn(model_input, model.model)
 
     # Compute demographic info
-    demog_df = _compute_demographic_info(demographic_info, model_output)
+    demog_df = _compute_demographic_info(demographic_info, treatment_info, model_output)
 
     # Generate binary predictions based on these pre-defined thresholds
     for _, row in thresholds.iterrows():

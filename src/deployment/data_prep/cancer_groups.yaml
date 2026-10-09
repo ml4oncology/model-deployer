@@ -1,0 +1,56 @@
+# Reporting groups for ICD-O-3 topography sites.
+# Keys of site_to_group are the descriptions in ml_common.constants.CANCER_CODE_MAP.
+
+# The ICD codes considered for the current model(s).
+considered_icd_codes:
+  - C15
+  - C16
+  - C17
+  - C18
+  - C19
+  - C20
+  - C21
+  - C22
+  - C23
+  - C24
+  - C25
+  - C26
+  - C34
+  - C44
+  - C49
+  - C50
+  - C54
+  - C56
+  - C61
+  - C64
+  - C67
+  - C68
+  - C73
+  - C74
+
+# description -> reporting group
+site_to_group:
+  Esophagus: gastric/stomach and esophageal
+  Stomach: gastric/stomach and esophageal
+  Small intestine: other
+  Colon: colon and rectal
+  Rectosigmoid junction: colon and rectal
+  Rectum: colon and rectal
+  Anus and anal canal: other
+  Liver and intrahepatic bile ducts: hepatocellular
+  Gallbladder: biliary
+  Other and unspecified parts of biliary tract: biliary
+  Pancreas: pancreas
+  Other and ill-defined digestive organs: other
+  Bronchus and lung: other
+  Skin: other
+  Connective, subcataneous, and other soft tissues: other
+  Breast: other
+  Corpus uteri: other
+  Ovary: other
+  Prostate gland: other
+  Kidney: other
+  Bladder: other
+  Other and unspecified urinary organs: other
+  Thyroid and other endocrine glands: other
+  Adrenal Gland: other
