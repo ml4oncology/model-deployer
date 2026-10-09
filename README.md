@@ -85,7 +85,7 @@ Details of the model card in each dashboard are hardcoded in `src/deployment/das
 # Model evaluation
 During or after the deployment period, the model performance can be prospectively evaluated via
 ```bash
-python src/deployment/monthly_model_eval.py --start-date <start_date> --end-date <end_date> --monthly-pull-date <monthly_pull_date> --prediction-file-path <path_to_predictions>
+python src/deployment/evaluation.py --start-date <start_date> --end-date <end_date> --monthly-pull-date <monthly_pull_date> --prediction-file-path <path_to_predictions>
 ```
 `<monthly_pull_date>` refers to the monthly chemo file pull date. The monthly chemo file pulls are cumulative. Make sure to choose a date that is 2 months after `<end_date>` if you are predicting the risk of ED visit in 1 month.  
 
