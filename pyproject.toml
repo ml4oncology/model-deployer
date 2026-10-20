@@ -41,7 +41,15 @@ dev = [
 ]
 
 [tool.setuptools]
-package-dir = {"deployer" = "src/deployment"}
+package-dir = {"deployer" = "src/deployment", "acu" = "src/training/acu"}
+packages = [
+    "deployer",
+    "deployer.dashboard",
+    "deployer.data_prep",
+    "deployer.data_prep.preprocess",
+    "deployer.model_eval",
+    "acu",
+]
 
 [tool.setuptools.package-data]
 "deployer.dashboard" = ["style.css"]

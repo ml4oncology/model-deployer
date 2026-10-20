@@ -158,10 +158,6 @@ def get_data(
     df = encode_primary_sites(df, model.model_features)
     df = encode_intent(df)
 
-    # Remove / reorganize features for symptoms' models
-    if model.name == "symp":
-        df = prep_symp_data(df)
-
     # Recreate any missing columns
     missing_cols = [str(col) for col in model.model_features if col not in df.columns]
 
@@ -422,21 +418,4 @@ def encode_primary_sites(df, model_features):
     cancer = cancer.drop(columns=other_sites)
 
     df = df.join(cancer)
-    return df
-
-
-def prep_symp_data(df):
-    """Prepare data for symptoms models"""
-    # reassign these regimens as other
-    reg_cols = [
-        "regimen_GI_FLOT _GASTRIC_",
-        "regimen_GI_FOLFNALIRI _COMP_",
-        "regimen_GI_FUFA C3 _GASTRIC_",
-        "regimen_GI_FUFA WEEKLY",
-        "regimen_GI_GEM D1_8 _ CAPECIT",
-        "regimen_GI_PACLI WEEKLY",
-    ]
-    mask = df[reg_cols].any(axis=1)
-    df.loc[mask, "regimen_other"] = True
-    df.columns = df.columns.str.replace(" ", "_")
     return df

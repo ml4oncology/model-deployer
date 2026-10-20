@@ -1,6 +1,6 @@
 # Model Deployer
 
-Silent deployment of AIM2REDUCE models to predict undesirable cancer events in Princess Margaret hospital under the EPIC system.
+Deployment of AIM2REDUCE models to predict undesirable cancer events in Princess Margaret hospital under the EPIC system.
 
 # Getting started
 ```bash
