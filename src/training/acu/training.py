@@ -14,12 +14,14 @@ import pandas as pd
 from bayes_opt import BayesianOptimization
 from bayes_opt.event import Events
 from bayes_opt.logger import JSONLogger, ScreenLogger
+from joblib import Parallel, delayed
 from lightgbm import LGBMClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
+from threadpoolctl import threadpool_limits
 from xgboost import XGBClassifier
 
 warnings.filterwarnings(action="ignore", category=ConvergenceWarning)
@@ -143,37 +145,40 @@ def train_models(
     return {alg: train_model(X, Y, metainfo, alg, best_params) for alg in algs}
 
 
-def cross_validate(
+def _fit_fold(
     X: pd.DataFrame,
     Y: pd.Series,
     metainfo: pd.DataFrame,
     alg: str,
-    calibrate: bool = False,
-    **kwargs,
+    fold: float,
+    calibrate: bool,
+    kwargs: dict,
 ):
-    models = []
-    for fold in metainfo["cv_folds"].unique():
-        mask = metainfo["cv_folds"] == fold
+    mask = metainfo["cv_folds"] == fold
 
-        # get the data splits
-        X_train, X_valid = X[~mask].copy(), X[mask].copy()
-        Y_train, Y_valid = Y[~mask].copy(), Y[mask].copy()
+    # get the data splits
+    X_train, X_valid = X[~mask].copy(), X[mask].copy()
+    Y_train, Y_valid = Y[~mask].copy(), Y[mask].copy()
 
-        # train the model
-        if alg == "XGB":
-            kwargs["early_stopping_rounds"] = 10
-            fit_kwargs = {
-                "eval_set": [(X_valid, Y_valid)],
-                "verbose": 0,
-            }
-        elif alg == "LGBM":
-            fit_kwargs = {
-                "eval_set": [(X_valid, Y_valid)],
-                "callbacks": [lgb.early_stopping(stopping_rounds=10, verbose=False)],
-            }
-        else:
-            fit_kwargs = {}
+    # train the model
+    if alg == "XGB":
+        kwargs = {**kwargs, "early_stopping_rounds": 10}
+        fit_kwargs = {
+            "eval_set": [(X_valid, Y_valid)],
+            "verbose": 0,
+        }
+    elif alg == "LGBM":
+        fit_kwargs = {
+            "eval_set": [(X_valid, Y_valid)],
+            "callbacks": [lgb.early_stopping(stopping_rounds=10, verbose=False)],
+        }
+    else:
+        fit_kwargs = {}
 
+    with threadpool_limits(limits=1, user_api="blas"), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        warnings.filterwarnings("ignore", category=FutureWarning)
+        warnings.filterwarnings("ignore", category=UserWarning)
         model = algs[alg](**kwargs)
         model.fit(X_train, Y_train, **fit_kwargs)
 
@@ -181,9 +186,21 @@ def cross_validate(
             model = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
             model.fit(X_valid, Y_valid)
 
-        models.append(model)
+    return model
 
-    return models
+
+def cross_validate(
+    X: pd.DataFrame,
+    Y: pd.Series,
+    metainfo: pd.DataFrame,
+    alg: str,
+    calibrate: bool = False,
+    fold_jobs: int = 1,
+    **kwargs,
+):
+    return Parallel(n_jobs=fold_jobs)(
+        delayed(_fit_fold)(X, Y, metainfo, alg, fold, calibrate, kwargs) for fold in metainfo["cv_folds"].unique()
+    )
 
 
 ###############################################################################
@@ -196,13 +213,15 @@ def tune_params(
     metainfo: pd.DataFrame,
     log_dir: str = "./logs/bayes_opt",
     verbose: int = 2,
+    fold_jobs: int = 1,
+    model_n_jobs: int | None = None,
 ):
     """Tunes hyperparameters for a given algorithm using Bayesian Optimization."""
     set_seed()
     hyperparam_config = model_tuning_param[alg]
     data = (X, Y, metainfo)
     bo = BayesianOptimization(
-        f=partial(eval_func, alg=alg, data=data),
+        f=partial(eval_func, alg=alg, data=data, fold_jobs=fold_jobs, model_n_jobs=model_n_jobs),
         pbounds=hyperparam_config,
         verbose=verbose,
         random_state=SEED,
@@ -243,11 +262,19 @@ def convert_params(params):
     return params
 
 
-def eval_func(alg: str, data: tuple[pd.DataFrame, pd.Series, pd.Series], **kwargs):
+def eval_func(
+    alg: str,
+    data: tuple[pd.DataFrame, pd.Series, pd.Series],
+    fold_jobs: int = 1,
+    model_n_jobs: int | None = None,
+    **kwargs,
+):
     X, Y, metainfo = data
 
     kwargs = {**model_static_param[alg], **convert_params(kwargs)}
-    models = cross_validate(X, Y, metainfo, alg, **kwargs)
+    if model_n_jobs is not None and alg in ("RF", "XGB", "LGBM"):
+        kwargs["n_jobs"] = model_n_jobs
+    models = cross_validate(X, Y, metainfo, alg, fold_jobs=fold_jobs, **kwargs)
 
     result = []
     for fold, model in enumerate(models):

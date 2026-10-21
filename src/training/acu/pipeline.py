@@ -55,6 +55,11 @@ def _build_keep_columns(df: pd.DataFrame, ed_lookback_years: int = 5) -> list[st
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REGIMEN_PATH = _REPO_ROOT / "Infos" / "master_regimen_map.csv"
 
+# Maps each supported cancer type (department) to the regimen-name prefix used
+# to identify its rows in the training data. Kept as a dict so future cancer
+# types can use a prefix that differs from their cancer-type code.
+DEPARTMENT_REGIMEN_PREFIX = {"GI": "GI", "LU": "LU"}
+
 with open(DEFAULT_CONFIG_PATH) as f:
     _DATA_PREP_CONFIG = yaml.safe_load(f)
 
@@ -112,10 +117,14 @@ def exclude_immediate_events(df: pd.DataFrame) -> pd.DataFrame:
 # Data Preparation Pipeline
 ###############################################################################
 class PrepACUData(PrepData):
-    def __init__(self, ed_lookback_years: int = 5):
+    def __init__(self, ed_lookback_years: int = 5, department: str = "GI"):
         super().__init__()
         if ed_lookback_years not in ED_LOOKBACK_OPTIONS:
             raise ValueError(f"ed_lookback_years must be one of {list(ED_LOOKBACK_OPTIONS)}")
+        if department not in DEPARTMENT_REGIMEN_PREFIX:
+            raise ValueError(
+                f"department must be one of {list(DEPARTMENT_REGIMEN_PREFIX)}, got {department!r}"
+            )
         deployment_lookback_window = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"]
         assert ed_lookback_years == 1 or ed_lookback_years == deployment_lookback_window, (
             f"ed_lookback_years={ed_lookback_years} must be 1 (deployment uses a hardcoded 1-year lookback) "
@@ -123,6 +132,7 @@ class PrepACUData(PrepData):
         )
         self.ed_lookback_years = ed_lookback_years
         self.ed_lookback = ED_LOOKBACK_OPTIONS[ed_lookback_years]
+        self.department = department
 
     def preprocess(
         self,
@@ -156,9 +166,10 @@ class PrepACUData(PrepData):
         # filter out rows where target is -1
         df = df[df[target_col] != -1]
 
-        # filter based on regimen
-        mask = (df["regimen"].str.startswith("GI")) & (df["regimen"].notnull())
-        get_excluded_numbers(df, mask, context=" not from GI department")
+        # filter based on regimen (department-specific cancer type)
+        prefix = DEPARTMENT_REGIMEN_PREFIX[self.department]
+        mask = (df["regimen"].str.startswith(prefix)) & (df["regimen"].notnull())
+        get_excluded_numbers(df, mask, context=f" not from {self.department} department")
         df = df[mask]
         df = _clean_regimens(df)
 
