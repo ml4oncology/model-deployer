@@ -8,6 +8,7 @@ from datetime import timedelta
 
 import pandas as pd
 import numpy as np
+from acu.constants import DAY_SINCE_PREV_EVENT_COLS
 from deployer.data_prep.constants import DAILY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.diagnosis import get_demographic_data
@@ -119,12 +120,9 @@ def get_data(
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
     imputation_val = model.ed_visit_lookback_days
-    fill_vals = {
-        "days_since_prev_ED_visit": imputation_val,
-        "days_since_last_treatment": imputation_val,
-    }
+    fill_vals = {col: imputation_val for col in DAY_SINCE_PREV_EVENT_COLS}
     df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
-    for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
+    for col in DAY_SINCE_PREV_EVENT_COLS:
         if col in df.columns:
             df.loc[df[col] < 0, col] = imputation_val
             df[col] = df[col].clip(upper=imputation_val)

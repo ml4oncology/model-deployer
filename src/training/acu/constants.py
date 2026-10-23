@@ -37,6 +37,33 @@ ED_LOOKBACK_OPTIONS = {
     1: {"prior_visits_feature": "num_prior_ED_visits_within_1_year", "lookback_days": 1 * 365},
 }
 
+DAY_SINCE_PREFIX = "days_since"
+
+DAY_SINCE_PREV_EVENT_COLS = (
+    "days_since_prev_ED_visit",
+    "days_since_last_treatment",
+)
+
+DAY_SINCE_OTHER_POLICY_COLS = (
+    "days_since_starting_treatment",
+)
+
+
+def validate_days_since_policy(columns) -> None:
+    """Ensure every days_since feature has an explicitly registered fill/cap policy."""
+    known = set(DAY_SINCE_PREV_EVENT_COLS) | set(DAY_SINCE_OTHER_POLICY_COLS)
+    unregistered = sorted(
+        str(col)
+        for col in columns
+        if str(col).startswith(DAY_SINCE_PREFIX) and str(col) not in known
+    )
+    if unregistered:
+        raise ValueError(
+            f"Unregistered days_since feature(s): {unregistered}. "
+            "Add each feature to DAY_SINCE_PREV_EVENT_COLS or "
+            "DAY_SINCE_OTHER_POLICY_COLS after deciding its fill/cap policy."
+        )
+
 ENGINEERED_COLS = ['visit_month_sin',
                    'visit_month_cos',
                    'days_since_starting_treatment',

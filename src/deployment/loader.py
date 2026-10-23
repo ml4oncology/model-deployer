@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from acu.constants import validate_days_since_policy
 from make_clinical_dataset.shared.constants import DEFAULT_CONFIG_PATH
 from ml_common.util import load_pickle
 
@@ -51,6 +52,7 @@ class Model:
             self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
         validate_model_site_codes(self.model_features)
+        validate_days_since_policy(self.model_features)
 
         # Inference reorders inputs to fold-0's feature order and scores every fold
         # positionally, so all folds must agree on it.
