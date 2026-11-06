@@ -17,7 +17,7 @@ from bayes_opt.logger import JSONLogger, ScreenLogger
 from joblib import Parallel, delayed
 from lightgbm import LGBMClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
@@ -46,6 +46,7 @@ algs = {
     "XGB": XGBClassifier,
     "LGBM": LGBMClassifier,
     "RF": RandomForestClassifier,
+    "ET": ExtraTreesClassifier,
 }
 
 # model parameters
@@ -78,6 +79,12 @@ model_tuning_param = {
         "max_depth": (3, 6),
         "min_samples_leaf": (10, 50),
     },
+    "ET": {
+        "n_estimators": (50, 100),
+        "max_depth": (3, 6),
+        "min_samples_leaf": (10, 50),
+        "max_features": (0.2, 1.0),
+    },
     "SVC": {
         "C": (0.0001, 1),
         "kernel": (0, 3.99),
@@ -89,6 +96,7 @@ bayesopt_param = {
     "XGB": {"init_points": 15, "n_iter": 200},
     "LGBM": {"init_points": 15, "n_iter": 200},
     "RF": {"init_points": 10, "n_iter": 50},
+    "ET": {"init_points": 10, "n_iter": 50},
     "SVC": {"init_points": 10, "n_iter": 50},
 }
 model_static_param = {
@@ -110,6 +118,7 @@ model_static_param = {
     },
     "LGBM": {"random_state": SEED, "verbosity": -1},
     "RF": {"random_state": SEED, "n_jobs": -1, "warm_start": True},
+    "ET": {"criterion": "gini", "random_state": SEED, "n_jobs": -1},
     "SVC": {"random_state": SEED, "probability": True},
 }
 
@@ -124,6 +133,7 @@ def train_model(
     alg: str,
     best_params: dict,
     calibrate: bool = True,
+    sample_weight: np.ndarray | pd.Series | None = None,
 ):
     models = {}
     for target, label in Y.items():
@@ -132,17 +142,33 @@ def train_model(
             kwargs["scale_pos_weight"] = sum(label == 0) / sum(label == 1)
 
         models[target] = cross_validate(
-            X, label, metainfo, alg, calibrate=calibrate, **kwargs
+            X,
+            label,
+            metainfo,
+            alg,
+            calibrate=calibrate,
+            sample_weight=sample_weight,
+            **kwargs,
         )
 
     return models
 
 
 def train_models(
-    X: pd.DataFrame, Y: pd.DataFrame, metainfo: pd.DataFrame, best_params: dict
+    X: pd.DataFrame,
+    Y: pd.DataFrame,
+    metainfo: pd.DataFrame,
+    best_params: dict,
+    sample_weight: np.ndarray | pd.Series | None = None,
 ):
     set_seed()
-    return {alg: train_model(X, Y, metainfo, alg, best_params) for alg in algs}
+    if not best_params:
+        algs_to_train = list(algs)
+    else:
+        algs_to_train = [alg for alg in best_params.keys() if alg in algs]
+        if not algs_to_train:
+            algs_to_train = list(algs)
+    return {alg: train_model(X, Y, metainfo, alg, best_params, sample_weight=sample_weight) for alg in algs_to_train}
 
 
 def _fit_fold(
@@ -153,12 +179,16 @@ def _fit_fold(
     fold: float,
     calibrate: bool,
     kwargs: dict,
+    sample_weight: np.ndarray | pd.Series | None = None,
 ):
     mask = metainfo["cv_folds"] == fold
 
     # get the data splits
     X_train, X_valid = X[~mask].copy(), X[mask].copy()
     Y_train, Y_valid = Y[~mask].copy(), Y[mask].copy()
+    sw = None if sample_weight is None else np.asarray(sample_weight)
+    sw_train = None if sw is None else sw[(~mask).to_numpy()]
+    sw_valid = None if sw is None else sw[mask.to_numpy()]
 
     # train the model
     if alg == "XGB":
@@ -167,11 +197,15 @@ def _fit_fold(
             "eval_set": [(X_valid, Y_valid)],
             "verbose": 0,
         }
+        if sw_valid is not None:
+            fit_kwargs["sample_weight_eval_set"] = [sw_valid]
     elif alg == "LGBM":
         fit_kwargs = {
             "eval_set": [(X_valid, Y_valid)],
             "callbacks": [lgb.early_stopping(stopping_rounds=10, verbose=False)],
         }
+        if sw_valid is not None:
+            fit_kwargs["eval_sample_weight"] = [sw_valid]
     else:
         fit_kwargs = {}
 
@@ -180,11 +214,11 @@ def _fit_fold(
         warnings.filterwarnings("ignore", category=FutureWarning)
         warnings.filterwarnings("ignore", category=UserWarning)
         model = algs[alg](**kwargs)
-        model.fit(X_train, Y_train, **fit_kwargs)
+        model.fit(X_train, Y_train, sample_weight=sw_train, **fit_kwargs)
 
         if calibrate:
             model = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
-            model.fit(X_valid, Y_valid)
+            model.fit(X_valid, Y_valid, sample_weight=sw_valid)
 
     return model
 
@@ -196,10 +230,12 @@ def cross_validate(
     alg: str,
     calibrate: bool = False,
     fold_jobs: int = 1,
+    sample_weight: np.ndarray | pd.Series | None = None,
     **kwargs,
 ):
     return Parallel(n_jobs=fold_jobs)(
-        delayed(_fit_fold)(X, Y, metainfo, alg, fold, calibrate, kwargs) for fold in metainfo["cv_folds"].unique()
+        delayed(_fit_fold)(X, Y, metainfo, alg, fold, calibrate, kwargs, sample_weight=sample_weight)
+        for fold in metainfo["cv_folds"].unique()
     )
 
 
@@ -215,13 +251,23 @@ def tune_params(
     verbose: int = 2,
     fold_jobs: int = 1,
     model_n_jobs: int | None = None,
+    sample_weight: np.ndarray | pd.Series | None = None,
+    weight_metric: bool = False,
 ):
     """Tunes hyperparameters for a given algorithm using Bayesian Optimization."""
     set_seed()
     hyperparam_config = model_tuning_param[alg]
     data = (X, Y, metainfo)
     bo = BayesianOptimization(
-        f=partial(eval_func, alg=alg, data=data, fold_jobs=fold_jobs, model_n_jobs=model_n_jobs),
+        f=partial(
+            eval_func,
+            alg=alg,
+            data=data,
+            fold_jobs=fold_jobs,
+            model_n_jobs=model_n_jobs,
+            sample_weight=sample_weight,
+            weight_metric=weight_metric,
+        ),
         pbounds=hyperparam_config,
         verbose=verbose,
         random_state=SEED,
@@ -267,6 +313,8 @@ def eval_func(
     data: tuple[pd.DataFrame, pd.Series, pd.Series],
     fold_jobs: int = 1,
     model_n_jobs: int | None = None,
+    sample_weight: np.ndarray | pd.Series | None = None,
+    weight_metric: bool = False,
     **kwargs,
 ):
     X, Y, metainfo = data
@@ -274,7 +322,8 @@ def eval_func(
     kwargs = {**model_static_param[alg], **convert_params(kwargs)}
     if model_n_jobs is not None and alg in ("RF", "XGB", "LGBM"):
         kwargs["n_jobs"] = model_n_jobs
-    models = cross_validate(X, Y, metainfo, alg, fold_jobs=fold_jobs, **kwargs)
+    sw = None if sample_weight is None else np.asarray(sample_weight)
+    models = cross_validate(X, Y, metainfo, alg, fold_jobs=fold_jobs, sample_weight=sw, **kwargs)
 
     result = []
     for fold, model in enumerate(models):
@@ -282,6 +331,15 @@ def eval_func(
         X_valid, Y_valid = X[mask], Y[mask]
         assert model.classes_[1] == 1  # positive class is at index 1
         pred_prob = model.predict_proba(X_valid)[:, 1]
-        result.append(roc_auc_score(Y_valid, pred_prob))
+        if weight_metric and sw is not None:
+            result.append(
+                roc_auc_score(
+                    Y_valid,
+                    pred_prob,
+                    sample_weight=sw[mask.to_numpy()],
+                )
+            )
+        else:
+            result.append(roc_auc_score(Y_valid, pred_prob))
 
     return np.mean(result)
