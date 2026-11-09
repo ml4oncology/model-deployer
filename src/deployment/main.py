@@ -149,6 +149,11 @@ if __name__ == "__main__":
         dropped_patients = dropped_patients[["mrn", "clinic_date", "reason", "extra_info"]]
         dropped_patients.to_csv(f"{output_dir}/interim/dropped_patients_{data_pull_date}.csv", index=False)
 
+    # if outputs is empty, return
+    if len(outputs) == 0:
+        print("No outputs generated. Exiting.")
+        exit(0)
+        
     out = pd.concat(outputs, ignore_index=True, axis=0)
     out = out.reset_index(drop=True)
 

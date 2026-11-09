@@ -150,6 +150,65 @@ def filter_intent_to_treat(df, chemo_file, config, anchor, date_col):
     return df_eval
 
 
+def load_prediction_csv(prediction_file_path, date_col):
+    """Load a prediction CSV and parse its assessment date column."""
+    return pd.read_csv(f"{prediction_file_path}", parse_dates=[date_col])
+
+
+def build_eval_frame(
+    prediction_df,
+    start_date,
+    end_date,
+    monthly_pull_date,
+    anchor,
+    config,
+    data_dir,
+):
+    """Attach ED labels and intent-to-treat filtering to prediction rows."""
+    date_col = DATE_COL_MAP[anchor]
+    postfix = MONTHLY_POSTFIX_MAP[anchor]
+    pull_token = pd.Timestamp(monthly_pull_date).strftime("%Y%m%d")
+    chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{pull_token}.csv"
+    ed_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{pull_token}.csv"
+
+    df = prediction_df.copy()
+    df[date_col] = pd.to_datetime(df[date_col])
+    df = df[df[date_col].between(pd.Timestamp(start_date), pd.Timestamp(end_date))].copy()
+    df["assessment_date"] = df[date_col]
+    df["last_seen_date"] = pd.Timestamp.max
+
+    # Merge ED visit dates and true labels to Model prediction file
+    ed_visit = get_emergency_room_data(ed_visits_file)
+    df = get_ED_labels(df, ed_visit, lookahead_window=30)
+
+    # filter out cases where ED visit occurred on the same day
+    df = df[(df["target_ED_date"] - df["assessment_date"]).dt.days != 0]
+
+    # Retain only intent-to-treat matched patients
+    df = filter_intent_to_treat(df, chemo_file, config, anchor, date_col)
+
+    df["target_ED_30d"] = df["target_ED_30d"].astype(int)
+    return df
+
+
+def combine_eval_frames(frames, date_col):
+    """Combine labeled prediction frames using the same deduplication rule as
+    a full evaluation run: sort by assessment date, then keep the first row
+    per patient and actual treatment date."""
+    frames = [frame for frame in frames if frame is not None and not frame.empty]
+    if not frames:
+        return pd.DataFrame()
+
+    combined = pd.concat(frames, ignore_index=True)
+    for col in (date_col, "assessment_date", "target_ED_date", "actual_trt_date"):
+        if col in combined.columns:
+            combined[col] = pd.to_datetime(combined[col])
+
+    combined = combined.sort_values(date_col, kind="mergesort")
+    combined = combined.groupby(["mrn", "actual_trt_date"]).first().reset_index()
+    return combined
+
+
 def quartile_odds_ratios(df, prob_col="ed_pred_prob", outcome_col="target_ED_30d"):
     df = df.copy()
     df["quartile"] = pd.qcut(df[prob_col], q=4, labels=["Q1", "Q2", "Q3", "Q4"])
@@ -428,34 +487,26 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    postfix = MONTHLY_POSTFIX_MAP[anchor]
     date_col = DATE_COL_MAP[anchor]
-    chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{monthly_pull_date}.csv"
-    ED_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{monthly_pull_date}.csv"
 
     config = Config(info_dir=info_dir)
 
     ############################ Analyze data #################################
 
     # Model Prediction file
-    df = pd.read_csv(f"{prediction_file_path}", parse_dates=[date_col])
-    df = df[df[date_col].between(start_date, end_date)]
-    df["assessment_date"] = df[date_col]
-    df["last_seen_date"] = pd.Timestamp.max
-
-    # Merge ED visit dates and true labels to Model prediction file
-    ed_visit = get_emergency_room_data(ED_visits_file)
-    df = get_ED_labels(df, ed_visit, lookahead_window=30)
-
-    # filter out cases where ED visit occurred on the same day
-    df = df[(df["target_ED_date"] - df["assessment_date"]).dt.days != 0]
-
-    # Retain only intent-to-treat matched patients
-    df = filter_intent_to_treat(df, chemo_file, config, anchor, date_col)
+    df = load_prediction_csv(prediction_file_path, date_col)
+    df = build_eval_frame(
+        df,
+        start_date,
+        end_date,
+        monthly_pull_date,
+        anchor,
+        config,
+        data_dir,
+    )
 
     print(f"Evaluation sample size: {len(df)}")
 
-    df["target_ED_30d"] = df["target_ED_30d"].astype(int)
     pd.DataFrame(df).to_csv(f"{output_dir}/{pred_file_ED}", index=False)
 
     ######################  Check model Performance ###########################
