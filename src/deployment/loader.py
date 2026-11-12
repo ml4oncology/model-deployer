@@ -35,20 +35,28 @@ class Model:
     #TODO: convert model to ONNX format
     """
 
-    def __init__(self, model_dir: str, prep_dir: str, anchor: str):
+    def __init__(self, model_dir: str, prep_dir: str, anchor: str, site: str = "GI"):
         self.anchor = anchor
+        self.site = site
 
         with open(DEFAULT_CONFIG_PATH) as file:
             self.prep_cfg = yaml.safe_load(file)
 
         # Load model file names from manifest
         with open(f"{model_dir}/model_manifest.yaml") as f:
-            manifest = yaml.safe_load(f)[anchor]
+            manifest = yaml.safe_load(f)[anchor][site]
+
+        for key in ("model", "prep"):
+            if not manifest.get(key):
+                raise ValueError(
+                    f"{anchor}.{site}.{key} is not configured in model_manifest.yaml."
+                )
 
         # Emergency Department Visit
         self.prep = load_pickle(prep_dir, manifest["prep"])
         self.model = load_pickle(model_dir, manifest["model"])
-        if "orig_x" in manifest:
+        self.orig_x = None
+        if manifest.get("orig_x"):
             self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
         validate_model_site_codes(self.model_features)

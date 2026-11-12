@@ -60,6 +60,7 @@ if __name__ == "__main__":
     start_date = args.start_date
     end_date = args.end_date
     anchor = args.model_anchor
+    site = "GI"
     dashboard_layout = args.dashboard_layout
     dashboard_font_scale = args.dashboard_font_scale
     generate_dashboard_png = args.save_dashboard_png
@@ -83,7 +84,7 @@ if __name__ == "__main__":
             os.makedirs(f"{output_dir}/daily_inputs")
 
     config = Config(info_dir=info_dir)
-    model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor)
+    model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, site=site)
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
