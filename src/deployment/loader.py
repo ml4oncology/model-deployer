@@ -2,31 +2,24 @@ from pathlib import Path
 
 import pandas as pd
 import yaml
+from acu.constants import validate_days_since_policy
 from make_clinical_dataset.shared.constants import DEFAULT_CONFIG_PATH
 from ml_common.util import load_pickle
 
 from deployer.data_prep.cancer_groups import validate_model_site_codes
 from deployer.data_prep.constants import ED_VISIT_COUNT_LOOKBACK_DAYS
 
-# Note: this is just temporary so that the saved pickled model
-# will run without issues. If we switch to ONNX, we can revisit this.
-# If you look at the notebook for training the model, there is an import
-# statement "from acu" ... . The import statements below are included
-# so that there will be no errors of 'acu' package not installed
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).parent / ".." / "training"))
-
 
 class Config:
     """Loads configuration files like thresholds, mappings, etc."""
 
-    def __init__(self, info_dir: str):
+    def __init__(self, info_dir: str, site: str = "GI"):
+        self.site = site
         self.thresholds = pd.read_excel(f"{info_dir}/ED_Prediction_Threshold.xlsx")
         self.thresholds.columns = self.thresholds.columns.str.lower()
 
         from deployer.data_prep.regimen import RegimenMapper
-        self.regimen_mapper = RegimenMapper(info_dir)
+        self.regimen_mapper = RegimenMapper(info_dir, site=site)
         self.regimens_to_exclude = self.regimen_mapper.regimens_to_exclude
 
         # imputation values
@@ -43,24 +36,32 @@ class Model:
     #TODO: convert model to ONNX format
     """
 
-    def __init__(self, model_dir: str, prep_dir: str, anchor: str, name: str | None = None):
+    def __init__(self, model_dir: str, prep_dir: str, anchor: str, site: str = "GI"):
         self.anchor = anchor
-        self.name = name
+        self.site = site
 
         with open(DEFAULT_CONFIG_PATH) as file:
             self.prep_cfg = yaml.safe_load(file)
 
         # Load model file names from manifest
         with open(f"{model_dir}/model_manifest.yaml") as f:
-            manifest = yaml.safe_load(f)[anchor]
+            manifest = yaml.safe_load(f)[anchor][site]
+
+        for key in ("model", "prep"):
+            if not manifest.get(key):
+                raise ValueError(
+                    f"{anchor}.{site}.{key} is not configured in model_manifest.yaml."
+                )
 
         # Emergency Department Visit
         self.prep = load_pickle(prep_dir, manifest["prep"])
         self.model = load_pickle(model_dir, manifest["model"])
-        if "orig_x" in manifest:
+        self.orig_x = None
+        if manifest.get("orig_x"):
             self.orig_x = pd.read_parquet(f"{prep_dir}/{manifest['orig_x']}")
         self.model_features = self.model[0].feature_names_in_
         validate_model_site_codes(self.model_features)
+        validate_days_since_policy(self.model_features)
 
         # Inference reorders inputs to fold-0's feature order and scores every fold
         # positionally, so all folds must agree on it.

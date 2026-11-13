@@ -32,6 +32,13 @@ repos:
     - id: nbqa-ruff
       args: [--fix, --exit-non-zero-on-fix]
 
+  # strip notebook outputs before committing (cells tagged `keep_output` are kept)
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.9.1
+    hooks:
+    - id: nbstripout
+      args: [--keep-id, --keep-count]
+
   # - repo: local
   #   hooks:
   #   - id: pytest

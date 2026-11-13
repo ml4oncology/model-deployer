@@ -25,6 +25,7 @@ from make_clinical_dataset.epr.filter import (
     keep_only_one_per_week,
 )
 from make_clinical_dataset.epr.prep import (
+    DEFAULT_NORM_COLS,
     PrepData,
     Splitter,
     fill_missing_data_heuristically,
@@ -33,7 +34,14 @@ from make_clinical_dataset.epr.util import get_excluded_numbers
 from make_clinical_dataset.shared.constants import EPR_DRUG_COLS, LAB_COLS, UNIT_MAP
 from ml_common.constants import CANCER_CODE_MAP
 from sklearn.model_selection import StratifiedGroupKFold
-from .constants import COLUMN_PATTERNS, ED_LOOKBACK_OPTIONS, META_COLS, build_keep_columns_explicit
+from .constants import (
+    COLUMN_PATTERNS,
+    DAY_SINCE_PREV_EVENT_COLS,
+    ED_LOOKBACK_OPTIONS,
+    META_COLS,
+    build_keep_columns_explicit,
+    validate_days_since_policy,
+)
 
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
@@ -54,6 +62,11 @@ def _build_keep_columns(df: pd.DataFrame, ed_lookback_years: int = 5) -> list[st
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _REGIMEN_PATH = _REPO_ROOT / "Infos" / "master_regimen_map.csv"
+
+# Maps each supported cancer type (department) to the regimen-name prefix used
+# to identify its rows in the training data. Kept as a dict so future cancer
+# types can use a prefix that differs from their cancer-type code.
+DEPARTMENT_REGIMEN_PREFIX = {"GI": "GI", "LU": "LU"}
 
 with open(DEFAULT_CONFIG_PATH) as f:
     _DATA_PREP_CONFIG = yaml.safe_load(f)
@@ -112,17 +125,27 @@ def exclude_immediate_events(df: pd.DataFrame) -> pd.DataFrame:
 # Data Preparation Pipeline
 ###############################################################################
 class PrepACUData(PrepData):
-    def __init__(self, ed_lookback_years: int = 5):
-        super().__init__()
+    def __init__(self, ed_lookback_years: int = 5, department: str = "GI"):
         if ed_lookback_years not in ED_LOOKBACK_OPTIONS:
             raise ValueError(f"ed_lookback_years must be one of {list(ED_LOOKBACK_OPTIONS)}")
+        if department not in DEPARTMENT_REGIMEN_PREFIX:
+            raise ValueError(
+                f"department must be one of {list(DEPARTMENT_REGIMEN_PREFIX)}, got {department!r}"
+            )
+        self.ed_lookback_years = ed_lookback_years
+        self.ed_lookback = ED_LOOKBACK_OPTIONS[ed_lookback_years]
+        self.department = department
+        # The prior-visits count is lookback-specific, but the default list of columns to
+        # normalize only names the 5-year variant.
+        norm_cols = list(DEFAULT_NORM_COLS)
+        if self.ed_lookback["prior_visits_feature"] not in norm_cols:
+            norm_cols.append(self.ed_lookback["prior_visits_feature"])
+        super().__init__(norm_cols=norm_cols)
         deployment_lookback_window = _DATA_PREP_CONFIG["ed_visit_lookback_window_deployment"]
         assert ed_lookback_years == 1 or ed_lookback_years == deployment_lookback_window, (
             f"ed_lookback_years={ed_lookback_years} must be 1 (deployment uses a hardcoded 1-year lookback) "
             f"or match ed_visit_lookback_window_deployment={deployment_lookback_window}"
         )
-        self.ed_lookback_years = ed_lookback_years
-        self.ed_lookback = ED_LOOKBACK_OPTIONS[ed_lookback_years]
 
     def preprocess(
         self,
@@ -156,9 +179,10 @@ class PrepACUData(PrepData):
         # filter out rows where target is -1
         df = df[df[target_col] != -1]
 
-        # filter based on regimen
-        mask = (df["regimen"].str.startswith("GI")) & (df["regimen"].notnull())
-        get_excluded_numbers(df, mask, context=" not from GI department")
+        # filter based on regimen (department-specific cancer type)
+        prefix = DEPARTMENT_REGIMEN_PREFIX[self.department]
+        mask = (df["regimen"].str.startswith(prefix)) & (df["regimen"].notnull())
+        get_excluded_numbers(df, mask, context=f" not from {self.department} department")
         df = df[mask]
         df = _clean_regimens(df)
 
@@ -216,16 +240,23 @@ class PrepACUData(PrepData):
         # df = drop_unused_drug_features(df)
 
         # fill missing data that can be filled heuristically (zeros, max values, etc)
+        validate_days_since_policy(df.columns)
         imputation_val = self.ed_lookback["lookback_days"]
-        fill_vals = {
-            "days_since_prev_ED_visit": imputation_val,
-            "days_since_last_treatment": imputation_val,
-        }
+        fill_vals = {col: imputation_val for col in DAY_SINCE_PREV_EVENT_COLS}
         df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
-        for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
+        for col in DAY_SINCE_PREV_EVENT_COLS:
             if col in df.columns:
                 df.loc[df[col] < 0, col] = imputation_val
                 df[col] = df[col].clip(upper=imputation_val)
+
+        # TODO: migrate this into make_clinical_dataset: the package's zero-fill list
+        # hardcodes "num_prior_ED_visits_within_5_years", so the lookback-specific
+        # prior-visits count is never zero-filled there. A missing count means no prior
+        # ED visits, so fill it with 0 (same semantics as the deployment path,
+        # src/deployment/data_prep/pipeline.py).
+        prior_visits_feature = self.ed_lookback["prior_visits_feature"]
+        if prior_visits_feature in df.columns:
+            df[prior_visits_feature] = df[prior_visits_feature].fillna(0)
 
         if drop_cols_missing_thresh != -1:
             # drop features with high missingness

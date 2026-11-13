@@ -428,12 +428,16 @@ if __name__ == "__main__":
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
+    plots_dir = os.path.join(output_dir, "evaluation_plots")
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
+
     postfix = MONTHLY_POSTFIX_MAP[anchor]
     date_col = DATE_COL_MAP[anchor]
     chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{monthly_pull_date}.csv"
     ED_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{monthly_pull_date}.csv"
 
-    config = Config(info_dir=info_dir)
+    config = Config(info_dir=info_dir, site="GI")
 
     ############################ Analyze data #################################
 
@@ -540,7 +544,7 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     auroc_plot_file = output_name(pred_prefix, anchor, "auroc_ci.png")
-    auroc_fig.savefig(f"{output_dir}/{auroc_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
+    auroc_fig.savefig(f"{plots_dir}/{auroc_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(auroc_fig)
     print(f"AUROC plot saved to {auroc_plot_file}.")
 
@@ -552,7 +556,7 @@ if __name__ == "__main__":
         title=f"Bootstrap Distribution of AUC — {anchor.title()}-Anchored Model",
     )
     boot_plot_file = output_name(pred_prefix, anchor, "auc_bootstrap.png")
-    boot_fig.savefig(f"{output_dir}/{boot_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
+    boot_fig.savefig(f"{plots_dir}/{boot_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(boot_fig)
     print(f"AUC bootstrap distribution plot saved to {boot_plot_file}.")
 
@@ -560,13 +564,13 @@ if __name__ == "__main__":
 
     cal_fig = plot_calibration(df, prob_col=pred_col, outcome_col=label_col)
     cal_plot_file = output_name(pred_prefix, anchor, "calibration.png")
-    cal_fig.savefig(f"{output_dir}/{cal_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
+    cal_fig.savefig(f"{plots_dir}/{cal_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(cal_fig)
     print(f"Calibration plot saved to {cal_plot_file}.")
 
     hist_fig = plot_prediction_histogram(df, prob_col=pred_col)
     hist_plot_file = output_name(pred_prefix, anchor, "prediction_histogram.png")
-    hist_fig.savefig(f"{output_dir}/{hist_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
+    hist_fig.savefig(f"{plots_dir}/{hist_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(hist_fig)
     print(f"Prediction histogram saved to {hist_plot_file}.")
 
@@ -583,7 +587,7 @@ if __name__ == "__main__":
 
     or_fig = plot_odds_ratios(or_df)
     or_plot_file = output_name(pred_prefix, anchor, "odds_ratios.png")
-    or_fig.savefig(f"{output_dir}/{or_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
+    or_fig.savefig(f"{plots_dir}/{or_plot_file}", bbox_inches="tight", dpi=SAVEFIG_DPI)
     plt.close(or_fig)
     print(f"Odds ratio plot saved to {or_plot_file}.")
 
@@ -610,9 +614,9 @@ if __name__ == "__main__":
         **{f"{k} CI High": ci_high for k, (ci_low, ci_high) in cal_metric_cis.items()},
     }])
     cal_metrics_file = output_name(pred_prefix, anchor, "calibration_metrics.csv")
-    cal_metrics_df.to_csv(f"{output_dir}/{cal_metrics_file}", index=False)
+    cal_metrics_df.to_csv(f"{plots_dir}/{cal_metrics_file}", index=False)
     print(f"Calibration metrics saved to {cal_metrics_file}.")
 
     ######################  Save Output ###########################
-    pd.DataFrame(model_results).to_csv(f"{output_dir}/{perf_file}", index=False)
+    pd.DataFrame(model_results).to_csv(f"{plots_dir}/{perf_file}", index=False)
     print(f"Performance metrics saved to {perf_file}.")

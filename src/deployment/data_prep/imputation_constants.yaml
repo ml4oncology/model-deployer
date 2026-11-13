@@ -1,11 +1,24 @@
-chemo_data_imputation:
-  height:
-    female_true: 160.0
-    female_false: 173.0
-  weight:
-    female_true: 60.8
-    female_false: 74.48333333333333
-  line_of_therapy: 1
-  cycle_number: 1
-  source: v2
-  notes: imputation values from training cohort
+GI:
+  chemo_data_imputation:
+    height:
+      female_true: 160.0
+      female_false: 173.0
+    weight:
+      female_true: 60.8
+      female_false: 74.48333333333333
+    line_of_therapy: 1
+    cycle_number: 1
+    source: v2
+    notes: imputation values from training cohort
+LU:
+  chemo_data_imputation:
+    height:
+      female_true: 159.03846153846155
+      female_false: 171.66666666666666
+    weight:
+      female_true: 61.821538461538466
+      female_false: 74.49285714285715
+    line_of_therapy: 2
+    cycle_number: 1
+    source: v2
+    notes: imputation values from training cohort
