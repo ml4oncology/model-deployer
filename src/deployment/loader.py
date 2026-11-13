@@ -13,12 +13,13 @@ from deployer.data_prep.constants import ED_VISIT_COUNT_LOOKBACK_DAYS
 class Config:
     """Loads configuration files like thresholds, mappings, etc."""
 
-    def __init__(self, info_dir: str):
+    def __init__(self, info_dir: str, site: str = "GI"):
+        self.site = site
         self.thresholds = pd.read_excel(f"{info_dir}/ED_Prediction_Threshold.xlsx")
         self.thresholds.columns = self.thresholds.columns.str.lower()
 
         from deployer.data_prep.regimen import RegimenMapper
-        self.regimen_mapper = RegimenMapper(info_dir)
+        self.regimen_mapper = RegimenMapper(info_dir, site=site)
         self.regimens_to_exclude = self.regimen_mapper.regimens_to_exclude
 
         # imputation values

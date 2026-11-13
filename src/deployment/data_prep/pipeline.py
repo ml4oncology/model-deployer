@@ -88,8 +88,13 @@ def get_data(
     }
 
     # Combine Features
+    site_imputation_constants = config.imputation_constants.get(model.site)
+    if site_imputation_constants is None or "chemo_data_imputation" not in site_imputation_constants:
+        raise ValueError(
+            f"Missing or invalid imputation constants for site '{model.site}' in imputation_constants.yaml"
+        )
     df = combine_features(
-        model.prep_cfg, feats, model.anchor, config.imputation_constants, model.ed_prior_visits_feature
+        model.prep_cfg, feats, model.anchor, site_imputation_constants, model.ed_prior_visits_feature
     )
     combined_mrns = pd.Index(df["mrn"].dropna().unique())
     missing_after_combine = demographic_mrns.difference(combined_mrns)

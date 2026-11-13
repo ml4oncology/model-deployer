@@ -83,7 +83,7 @@ if __name__ == "__main__":
     if not os.path.exists(f"{output_dir}/daily_inputs"):
             os.makedirs(f"{output_dir}/daily_inputs")
 
-    config = Config(info_dir=info_dir)
+    config = Config(info_dir=info_dir, site=site)
     model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, site=site)
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 

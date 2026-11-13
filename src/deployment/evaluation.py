@@ -433,7 +433,7 @@ if __name__ == "__main__":
     chemo_file = f"{data_dir}/{PROJ_NAME}_chemo_{postfix}{monthly_pull_date}.csv"
     ED_visits_file = f"{data_dir}/{PROJ_NAME}_ED_visits_{postfix}{monthly_pull_date}.csv"
 
-    config = Config(info_dir=info_dir)
+    config = Config(info_dir=info_dir, site="GI")
 
     ############################ Analyze data #################################
 
