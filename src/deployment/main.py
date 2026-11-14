@@ -82,6 +82,10 @@ if __name__ == "__main__":
         os.makedirs(f"{output_dir}/interim")
     if not os.path.exists(f"{output_dir}/daily_inputs"):
             os.makedirs(f"{output_dir}/daily_inputs")
+    # --- MONITORING: directory for daily per-patient missingness files ---
+    if not os.path.exists(f"{output_dir}/daily_missingness"):
+        os.makedirs(f"{output_dir}/daily_missingness")
+    # --- END MONITORING ---
 
     config = Config(info_dir=info_dir, site=site)
     model = Model(model_dir=model_dir, prep_dir=f"{info_dir}/Prep", anchor=anchor, site=site)
@@ -125,9 +129,18 @@ if __name__ == "__main__":
                     data_pull_date,
                     model.anchor,
                 )
-            dashboard_masks.append(patients_mask)
         else:
-            dashboard_masks.append(pd.Series(1, index=res["model_output"].index, dtype=int))
+            patients_mask = pd.Series(1, index=res["model_output"].index, dtype=int)
+        dashboard_masks.append(patients_mask)
+
+        # --- MONITORING: save per-patient missingness for scored patients only ---
+        scored_missingness = data_res["missingness"].loc[res["scored_index"]].copy()
+        scored_missingness.insert(2, "first_trt", patients_mask.to_numpy())
+        scored_missingness.to_csv(
+            Path(output_dir) / "daily_missingness" / f"missingness_{data_pull_date}_{anchor}.csv",
+            index_label="idx",
+        )
+        # --- END MONITORING ---
 
         # this saves information about patients undergoing first treatment during given day
         new_trt_patients = get_dashboard_keep_mask(

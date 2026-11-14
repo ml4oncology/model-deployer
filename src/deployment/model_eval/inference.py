@@ -130,6 +130,10 @@ def get_model_output(
     model_input = model_input.dropna()
     model_output = model_output.loc[model_input.index]
 
+    # --- MONITORING: keep the original index of rows that survive scoring ---
+    scored_index = model_input.index
+    # --- END MONITORING ---
+
     # Generate prediction probabilities
     model_output["ed_pred_prob"] = pred_fn(model_input, model.model)
 
@@ -150,5 +154,8 @@ def get_model_output(
         "model_output": model_output.reset_index(drop=True),
         "demographic_info": demog_df.reset_index(drop=True),
         "dropped_patients": dropped_patients.reset_index(drop=True),
+        # --- MONITORING: original index of scored rows for missingness alignment ---
+        "scored_index": scored_index,
+        # --- END MONITORING ---
     }
 

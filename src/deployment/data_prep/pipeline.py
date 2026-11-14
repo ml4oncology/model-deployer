@@ -93,9 +93,11 @@ def get_data(
         raise ValueError(
             f"Missing or invalid imputation constants for site '{model.site}' in imputation_constants.yaml"
         )
-    df = combine_features(
+    # --- MONITORING: unpack treatment-level missingness snapshot ---
+    df, treatment_missing = combine_features(
         model.prep_cfg, feats, model.anchor, site_imputation_constants, model.ed_prior_visits_feature
     )
+    # --- END MONITORING ---
     combined_mrns = pd.Index(df["mrn"].dropna().unique())
     missing_after_combine = demographic_mrns.difference(combined_mrns)
     if not missing_after_combine.empty:
@@ -180,6 +182,27 @@ def get_data(
     cols = cols[cols.str.contains("mrn|date|dashboard_regimen") | cols.isin(model.model_features)]
     df = df[cols]
 
+    # --- MONITORING: snapshot model-input missingness before statistical imputation ---
+    treatment_cols = {"height", "weight", "line_of_therapy", "cycle_number", "body_surface_area"}
+    stat_cols = sorted(
+        {
+            col
+            for cols in model.prep.imp.impute_cols.values()
+            for col in cols
+            if not str(col).endswith("_change") and col not in treatment_cols
+        }
+    )
+    stat_cols = [col for col in stat_cols if col in df.columns and col in model.model_features]
+    stat_missing = df[stat_cols].isnull()
+    stat_missing.columns = [f"{col}_is_missing" for col in stat_missing.columns]
+
+    treatment_missing = treatment_missing.reindex(df.index)
+    missingness = pd.concat([treatment_missing, stat_missing], axis=1)
+    missingness.insert(0, "mrn", df["mrn"])
+    date_col = "clinic_date" if model.anchor == "clinic" else "treatment_date"
+    missingness.insert(1, date_col, df[date_col])
+    # --- END MONITORING ---
+
     # Transform Data: Impute, Normalize, and Clip
     df = model.prep.transform_data(df, one_hot_encode=False)
 
@@ -195,6 +218,9 @@ def get_data(
     return {
         "data": df,
         "dropped_patients": dropped_patients,
+        # --- MONITORING: per-patient missingness before statistical imputation ---
+        "missingness": missingness,
+        # --- END MONITORING ---
     }
 
 
@@ -238,7 +264,16 @@ def combine_features(
             raise ValueError(err_msg)
 
     df = combine_demographic_to_main_data(df, dmg, "assessment_date")
-    
+
+    # --- MONITORING: snapshot treatment-level missingness before constant imputation ---
+    treatment_cols = ["height", "weight", "line_of_therapy", "cycle_number"]
+    treatment_missing = df[treatment_cols].isnull().copy()
+    treatment_missing.columns = [f"{col}_is_missing" for col in treatment_cols]
+    treatment_missing["body_surface_area_is_missing"] = (
+        df["body_surface_area"].isnull() & (df["height"].isnull() | df["weight"].isnull())
+    )
+    # --- END MONITORING ---
+
     # impute chemo data
     # has to be after combining with demographic data since height, weight
     # are imputed based on sex
@@ -290,7 +325,8 @@ def combine_features(
             )
     df = add_engineered_features(df, "assessment_date")
 
-    return df
+    return df, treatment_missing
+
 
 def add_engineered_features(df, date_col: str = 'treatment_date') -> pd.DataFrame:
     df = get_visit_month_feature(df, col=date_col)
