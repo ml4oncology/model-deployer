@@ -1,6 +1,6 @@
 # Model Deployer
 
-Silent deployment of AIM2REDUCE models to predict undesirable cancer events in Princess Margaret hospital under the EPIC system.
+Deployment of AIM2REDUCE models to predict undesirable cancer events in Princess Margaret hospital under the EPIC system.
 
 # Getting started
 ```bash
@@ -36,6 +36,8 @@ In this code base, for training and deployment, the null values for the features
 ## Model training
 The list of features used in model training, accounting for various pulls, is located in `src/training/acu/constants.py`. In choosing the training/testing dates, consider the lookback window of some features and be mindful of covariate shifts due to changing data sources during the retrospective period. For example, if the ED visit lookback window is 1 year, the start date has to be a year after the first occurence of ED visit.
 
+The maximum ED lookback window is configured in `make-clinical-dataset` via `ed_visit_lookback_window_deployment` in `shared/config/default.yaml`. A shorter lookback can be used during model training by setting `ed_lookback_years` in `src/training/notebooks/model_deployment_training.ipynb`. When `ed_lookback_years` is less than the configured maximum, the pipeline automatically caps the `days_since...` features — currently `days_since_prev_ED_visit` and `days_since_last_treatment` — at the shorter window in both training and deployment. For example, `ed_lookback_years = 1` caps these features at 365 days, while `5` caps them at 1825 days. Missing or negative values are filled with this maximum value to indicate no event within the lookback window.
+
 Run `src/training/notebooks/model_deployment_training.ipynb` to train and select the machine learning model for deployment. Save the model `model_name.pkl` to `Models`, save the input data file transformer (normalization, imputation, OHE, etc.) `prep.pkl` to `Infos/Prep`, and save the transformed input across all splits `X.parquet.gzip`, used in the SHAP Kernel Explainer, to `Infos/Prep`.
 
 The notebook also produces the file `src/data_prep/imputation_constants.yaml` which is used to impute `height`, `weight`, `line_of_therapy`, `cycle_number` during the deployment phase.
@@ -43,21 +45,43 @@ The notebook also produces the file `src/data_prep/imputation_constants.yaml` wh
 # Deployment
 ## Requirements
 In the home directory, subdirectories `Models`, `Infos`, and `Data` needs to be present. 
-- `Models` contains pickle files of the deployment model and a `model_manifest.yaml` that maps model roles to file names:
+- `Models` contains pickle files of the deployment model and a `model_manifest.yaml` that maps model roles to file names. Models are nested by anchor and cancer site:
   ```yaml
   clinic:
-    model: <model_pickle_filename_without_.pkl>
-    prep: <prep_pickle_filename_without_.pkl>
-    orig_x: <parquet_filename>
+    GI:
+      model: <model_pickle_filename_without_.pkl>
+      prep: <prep_pickle_filename_without_.pkl>
+      orig_x: <parquet_filename>
+    LU:
+      model: null
+      prep: null
+      orig_x: null
 
   treatment:
-    model: <model_pickle_filename_without_.pkl>
-    prep: <prep_pickle_filename_without_.pkl>
+    GI:
+      model: <model_pickle_filename_without_.pkl>
+      prep: <prep_pickle_filename_without_.pkl>
+      orig_x: null
+    LU:
+      model: null
+      prep: null
+      orig_x: null
   ```
-  When switching to a new model, place the new files in `Models/` and `Infos/Prep/`, then update the filenames in `model_manifest.yaml`.
+  The deployment pipeline currently loads the `GI` site. When switching to a new model, place the new files in `Models/` and `Infos/Prep/`, then update the filenames in `model_manifest.yaml`.
 - `Infos` must contain the regimen dictionary mapping and exclusion list `master_regimen_map.csv` as well as a subdirectory `Prep` which contains the config files, data pre-processing modules, and processed input data from the retrospective period. 
 - `Data` contains live EHR-pulled data everyday during deployment.
 - `src/deployment/data_prep/cancer_groups.yaml` maps the considered ICD-O-3 primary site codes — only the ones used in training — to the cancer groups used for dashboard display and subgroup analysis. Keep this list consistent with the `cancer_site_*` codes of the deployed model: `Model` raises an error at load time if the model uses a code missing from the list.
+
+### Deployment checklist
+
+Before running the deployment pipeline, confirm:
+
+- [ ] `Models/model_manifest.yaml` exists and is up to date with the files for the active anchor and site.
+- [ ] The model file (`.pkl`) is present in `Models/`.
+- [ ] The data pre-processing file (`.pkl`) is present in `Infos/Prep/`.
+- [ ] The training input feature file (`orig_x`) is present in `Infos/Prep/`, if required by the manifest.
+- [ ] `Infos/master_regimen_map.csv` exists and is up to date.
+- [ ] `src/deployment/data_prep/cancer_groups.yaml` is up to date.
 
 ## E-mail alarm pipeline
 The e-mail alerts sent to the oncologist contain a dashboard specific to a patient. Dashboard generation uses the silent deployment baseline file. To create that baseline, first run 

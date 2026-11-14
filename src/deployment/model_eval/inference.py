@@ -3,7 +3,6 @@ Module to generate predictions
 """
 
 import os
-import pickle
 from typing import Callable, TypeVar
 
 import numpy as np
@@ -153,40 +152,3 @@ def get_model_output(
         "dropped_patients": dropped_patients.reset_index(drop=True),
     }
 
-
-def get_symp_model_output(df: pd.DataFrame, thresholds: pd.DataFrame, model_dir: str) -> pd.DataFrame:
-    # TODO: support trying out multiple different models per target
-    # TODO: create a config file that maps targets with the model names
-    #       (i.e. Pain: [LGBM_pain.pkl, Mistral_pain.pkl, etc])
-
-    # load the model from disk
-    filename = "LGBM_symp.pkl"
-    with open(f"{model_dir}/{filename}", "rb") as file:
-        model = pickle.load(file)
-
-    # TODO: Ask Noke to provide just the models (no need for rest of the stuff in here)
-    # reformat the model object
-    symps = ["Pain", "Tired", "Nausea", "Depress", "Anxious", "Drowsy", "Appetite", "WellBeing", "SOB"]
-    lgbm_models = {symp: model[("lgbm", f"Label_{symp}_3pt_change")]["best_model"] for symp in symps}
-    calib_models = {symp: model[("lgbm", f"Label_{symp}_3pt_change")]["best_ir_model"] for symp in symps}
-
-    # Separate patient id and visit date information
-    result = df[["mrn", "treatment_date"]].copy()
-
-    for symp in symps:
-        model = lgbm_models[symp]
-        calibrator = calib_models[symp]
-
-        # Reorder model features according to the order used in training
-        x = df[model.feature_name_]
-
-        # Generate predictions and combine with patient info
-        pred_prob = model.predict_proba(x)[:, 1]  # probability of the positive class
-        calib_pred_prob = calibrator.transform(pred_prob)
-        result[f"{symp}_pred_prob"] = calib_pred_prob
-
-        # Generate binary predictions based on pre-defined thresholds
-        thresh = thresholds[f"Label_{symp}_3pt_change"]
-        result[f"{symp}_pred"] = (result[f"{symp}_pred_prob"] > thresh).astype(int)
-
-    return result

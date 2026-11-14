@@ -8,6 +8,7 @@ from datetime import timedelta
 
 import pandas as pd
 import numpy as np
+from acu.constants import DAY_SINCE_PREV_EVENT_COLS
 from deployer.data_prep.constants import DAILY_POSTFIX_MAP, PROJ_NAME
 from deployer.data_prep.preprocess.chemo import get_treatment_data
 from deployer.data_prep.preprocess.diagnosis import get_demographic_data
@@ -87,8 +88,13 @@ def get_data(
     }
 
     # Combine Features
+    site_imputation_constants = config.imputation_constants.get(model.site)
+    if site_imputation_constants is None or "chemo_data_imputation" not in site_imputation_constants:
+        raise ValueError(
+            f"Missing or invalid imputation constants for site '{model.site}' in imputation_constants.yaml"
+        )
     df = combine_features(
-        model.prep_cfg, feats, model.anchor, config.imputation_constants, model.ed_prior_visits_feature
+        model.prep_cfg, feats, model.anchor, site_imputation_constants, model.ed_prior_visits_feature
     )
     combined_mrns = pd.Index(df["mrn"].dropna().unique())
     missing_after_combine = demographic_mrns.difference(combined_mrns)
@@ -119,12 +125,9 @@ def get_data(
 
     # Fill missing data that can be filled heuristically (zeros, max values, etc)
     imputation_val = model.ed_visit_lookback_days
-    fill_vals = {
-        "days_since_prev_ED_visit": imputation_val,
-        "days_since_last_treatment": imputation_val,
-    }
+    fill_vals = {col: imputation_val for col in DAY_SINCE_PREV_EVENT_COLS}
     df = fill_missing_data_heuristically(df, max_fills=[], custom_fills=fill_vals)
-    for col in ("days_since_last_treatment", "days_since_prev_ED_visit"):
+    for col in DAY_SINCE_PREV_EVENT_COLS:
         if col in df.columns:
             df.loc[df[col] < 0, col] = imputation_val
             df[col] = df[col].clip(upper=imputation_val)
@@ -157,10 +160,6 @@ def get_data(
     df = encode_regimens(df, model.model_features)
     df = encode_primary_sites(df, model.model_features)
     df = encode_intent(df)
-
-    # Remove / reorganize features for symptoms' models
-    if model.name == "symp":
-        df = prep_symp_data(df)
 
     # Recreate any missing columns
     missing_cols = [str(col) for col in model.model_features if col not in df.columns]
@@ -422,21 +421,4 @@ def encode_primary_sites(df, model_features):
     cancer = cancer.drop(columns=other_sites)
 
     df = df.join(cancer)
-    return df
-
-
-def prep_symp_data(df):
-    """Prepare data for symptoms models"""
-    # reassign these regimens as other
-    reg_cols = [
-        "regimen_GI_FLOT _GASTRIC_",
-        "regimen_GI_FOLFNALIRI _COMP_",
-        "regimen_GI_FUFA C3 _GASTRIC_",
-        "regimen_GI_FUFA WEEKLY",
-        "regimen_GI_GEM D1_8 _ CAPECIT",
-        "regimen_GI_PACLI WEEKLY",
-    ]
-    mask = df[reg_cols].any(axis=1)
-    df.loc[mask, "regimen_other"] = True
-    df.columns = df.columns.str.replace(" ", "_")
     return df
