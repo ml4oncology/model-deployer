@@ -92,7 +92,7 @@ if __name__ == "__main__":
     thresholds = config.thresholds.query(f'model_anchor == "{anchor.title()}-anchored"')
 
     date_range = pd.date_range(start_date, end_date, freq="d").strftime("%Y%m%d")
-    inputs, outputs, meta_data, dashboard_masks = [], [], [], []
+    inputs, outputs, meta_data, dashboard_masks, missingness_records = [], [], [], [], []
     for i, data_pull_date in tqdm(enumerate(date_range)):
         print(f"**** Processing #{i}: {data_pull_date} *****")
         feats = build_features(config, data_dir, data_pull_date, model.anchor, model.prep_cfg, model_features=model.model_features)
@@ -136,6 +136,7 @@ if __name__ == "__main__":
         # --- MONITORING: save per-patient missingness for scored patients only ---
         scored_missingness = data_res["missingness"].loc[res["scored_index"]].copy()
         scored_missingness.insert(2, "first_trt", patients_mask.to_numpy())
+        missingness_records.append(scored_missingness.copy())
         scored_missingness.to_csv(
             Path(output_dir) / "daily_missingness" / f"missingness_{data_pull_date}_{anchor}.csv",
             index_label="idx",
@@ -181,6 +182,9 @@ if __name__ == "__main__":
     mask = pd.concat(dashboard_masks, ignore_index=True, axis=0)
     mask = mask.reset_index(drop=True)
 
+    missingness_agg = pd.concat(missingness_records, ignore_index=True, axis=0)
+    missingness_agg = missingness_agg.reset_index(drop=True)
+
     dashboard_inp = inp.loc[mask == 1].reset_index(drop=True)
     dashboard_meta = meta.loc[mask == 1].reset_index(drop=True)
 
@@ -197,6 +201,12 @@ if __name__ == "__main__":
         dashboard_inp_with_keys = dashboard_inp.copy()
         dashboard_inp_with_keys[['mrn', 'clinic_date']] = dashboard_meta[['mrn', 'clinic_date']].values
         dashboard_inp_with_keys.to_parquet(f"{output_dir}/silent_deployment_input_{anchor}.parquet", index=False)
+
+        silent_missingness = missingness_agg.loc[mask == 1].reset_index(drop=True)
+        silent_missingness.to_csv(
+            Path(output_dir) / "daily_missingness" / f"silent_deployment_input_missingness_{anchor}.csv",
+            index=False,
+        )
 
     # Generate dashboard per patient
     if generate_dashboard_png:
