@@ -115,6 +115,41 @@ def prediction_file_pattern(anchor):
     )
 
 
+def daily_input_file_pattern(anchor):
+    return re.compile(rf"^input_(\d{{8}})_{re.escape(anchor)}\.csv$")
+
+
+def daily_prediction_path(output_dir, day, anchor):
+    day = to_date(day)
+    return (
+        Path(output_dir)
+        / f"output_{day:%Y%m%d}_{day:%Y%m%d}_{anchor}.csv"
+    )
+
+
+def discover_daily_input_files(output_dir, anchor, start_date, end_date):
+    input_path = Path(output_dir) / "daily_inputs"
+    if not input_path.is_dir():
+        return []
+
+    start_date = to_date(start_date)
+    end_date = to_date(end_date)
+    pattern = daily_input_file_pattern(anchor)
+    found = []
+
+    for path in input_path.glob(f"input_*_{anchor}.csv"):
+        match = pattern.match(path.name)
+        if not match:
+            continue
+
+        file_date = to_date(match.group(1))
+        if start_date <= file_date <= end_date:
+            found.append((file_date, path))
+
+    found.sort(key=lambda item: item[0])
+    return found
+
+
 def discover_prediction_files(output_dir, anchor, start_date, end_date):
     output_path = Path(output_dir)
     if not output_path.is_dir():
