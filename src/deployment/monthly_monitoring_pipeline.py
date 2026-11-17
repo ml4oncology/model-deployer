@@ -2,7 +2,6 @@
 """Maintain cumulative live-deployment predictions with ED labels."""
 
 import argparse
-import json
 import re
 import sys
 from dataclasses import dataclass
@@ -18,10 +17,13 @@ from deployer.monitoring_common import (
     atomic_write_text,
     discover_prediction_files,
     load_prediction_window,
-    pipeline_lock,
+    metadata_text,
     print_files,
+    read_metadata,
+    run_serialized,
     to_date,
     utc_now,
+    validate_metadata_identity,
 )
 
 METADATA_SCHEMA_VERSION = 1
@@ -162,35 +164,20 @@ def _paths(output_dir, anchor):
 
 
 def _metadata_text(metadata):
-    return json.dumps(metadata.to_dict(), indent=2) + "\n"
+    return metadata_text(metadata)
 
 
 def _read_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read metadata {path}: {exc}") from exc
-
-    metadata = MonitoringMetadata.from_dict(data)
-    if metadata.schema_version != METADATA_SCHEMA_VERSION:
-        raise MonitoringPipelineError(
-            f"Unsupported metadata schema version: {metadata.schema_version}"
-        )
-    return metadata
+    return read_metadata(
+        path,
+        MonitoringMetadata,
+        METADATA_SCHEMA_VERSION,
+        label="metadata",
+    )
 
 
 def _validate_metadata(metadata, anchor, deployment_start_date):
-    if metadata.anchor != anchor:
-        raise MonitoringPipelineError(
-            f"Metadata anchor {metadata.anchor!r} does not match {anchor!r}"
-        )
-    if metadata.deployment_start_date != deployment_start_date:
-        raise MonitoringPipelineError(
-            "Metadata deployment start date "
-            f"{metadata.deployment_start_date.isoformat()} does not match "
-            f"{deployment_start_date.isoformat()}"
-        )
+    validate_metadata_identity(metadata, anchor, deployment_start_date)
 
 
 def _create_baseline(
@@ -409,29 +396,17 @@ def run_pipeline(
     deployment_start_date = to_date(deployment_start_date)
     run_date = to_date(run_date)
     _, _, lock_path = _paths(output_dir, anchor)
-
-    if dry_run:
-        _run_once(
-            deployment_start_date,
-            run_date,
-            anchor,
-            data_dir,
-            output_dir,
-            info_dir,
-            dry_run=True,
-        )
-        return
-
-    with pipeline_lock(lock_path):
-        _run_once(
-            deployment_start_date,
-            run_date,
-            anchor,
-            data_dir,
-            output_dir,
-            info_dir,
-            dry_run=False,
-        )
+    run_serialized(
+        _run_once,
+        lock_path=lock_path,
+        dry_run=dry_run,
+        deployment_start_date=deployment_start_date,
+        run_date=run_date,
+        anchor=anchor,
+        data_dir=data_dir,
+        output_dir=output_dir,
+        info_dir=info_dir,
+    )
 
 
 def parse_args(argv=None):

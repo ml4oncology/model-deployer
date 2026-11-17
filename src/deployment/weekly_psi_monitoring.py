@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Maintain weekly population stability index (PSI) monitoring."""
 
-import json
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -14,11 +13,20 @@ from deployer.monitoring_common import (
     atomic_write_text,
     daily_prediction_path,
     discover_daily_input_files,
+    friday_on_or_after,
+    last_eligible_friday,
+    metadata_text,
     print_files,
+    read_metadata,
     to_date,
     utc_now,
+    week_window_start,
 )
 from pandas.api.types import is_bool_dtype, is_numeric_dtype
+
+_friday_on_or_after = friday_on_or_after
+_last_eligible_friday = last_eligible_friday
+_metadata_text = metadata_text
 
 PSI_REFERENCE_SCHEMA_VERSION = 1
 PSI_WEEKLY_SCHEMA_VERSION = 1
@@ -253,20 +261,6 @@ def _reference_source_path(output_dir, anchor):
     return Path(output_dir) / f"silent_deployment_input_{anchor}.parquet"
 
 
-def _metadata_text(metadata):
-    return json.dumps(metadata.to_dict(), indent=2) + "\n"
-
-
-def _friday_on_or_after(value):
-    day = to_date(value)
-    return day + timedelta(days=(4 - day.weekday()) % 7)
-
-
-def _last_eligible_friday(run_date):
-    day = to_date(run_date) - timedelta(days=1)
-    return day - timedelta(days=(day.weekday() - 4) % 7)
-
-
 def _reference_version_id(source_mtime_ns, source_size):
     return f"ref_{source_mtime_ns}_{source_size}_v{PSI_BINNING_VERSION}"
 
@@ -461,32 +455,43 @@ def _fit_continuous_feature(series):
         inner_edges = edges[1:-1]
         cut_edges = [-np.inf, *inner_edges.tolist(), np.inf]
         n_bins = len(cut_edges) - 1
-        codes = pd.cut(
-            numeric,
-            bins=cut_edges,
-            labels=False,
-            include_lowest=True,
-        )
-        counts = codes.value_counts().reindex(range(n_bins), fill_value=0).sort_index()
-
-        for bin_id in range(n_bins):
-            lower = None if bin_id == 0 else cut_edges[bin_id]
-            upper = None if bin_id == n_bins - 1 else cut_edges[bin_id + 1]
-            if bin_id == 0:
-                label = f"(-inf, {_format_bound(upper)}]"
-            elif bin_id == n_bins - 1:
-                label = f"({_format_bound(lower)}, inf)"
-            else:
-                label = f"({_format_bound(lower)}, {_format_bound(upper)}]"
+        if n_bins == 1:
             bins.append(
                 {
-                    "bin_id": bin_id,
-                    "bin_label": label,
-                    "lower_bound": np.nan if lower is None else lower,
-                    "upper_bound": np.nan if upper is None else upper,
-                    "reference_count": int(counts.loc[bin_id]),
+                    "bin_id": 0,
+                    "bin_label": "all",
+                    "lower_bound": np.nan,
+                    "upper_bound": np.nan,
+                    "reference_count": int(len(non_missing)),
                 }
             )
+        else:
+            codes = pd.cut(
+                numeric,
+                bins=cut_edges,
+                labels=False,
+                include_lowest=True,
+            )
+            counts = codes.value_counts().reindex(range(n_bins), fill_value=0).sort_index()
+
+            for bin_id in range(n_bins):
+                lower = None if bin_id == 0 else cut_edges[bin_id]
+                upper = None if bin_id == n_bins - 1 else cut_edges[bin_id + 1]
+                if bin_id == 0:
+                    label = f"(-inf, {_format_bound(upper)}]"
+                elif bin_id == n_bins - 1:
+                    label = f"({_format_bound(lower)}, inf)"
+                else:
+                    label = f"({_format_bound(lower)}, {_format_bound(upper)}]"
+                bins.append(
+                    {
+                        "bin_id": bin_id,
+                        "bin_label": label,
+                        "lower_bound": np.nan if lower is None else lower,
+                        "upper_bound": np.nan if upper is None else upper,
+                        "reference_count": int(counts.loc[bin_id]),
+                    }
+                )
 
     bins.append(
         {
@@ -548,6 +553,7 @@ def _build_reference_bins(df, specs, version_record):
 
     for spec in specs:
         if spec.feature_type == "continuous":
+            print(spec)
             feature_bins = _fit_continuous_feature(df[spec.source_columns[0]])
         elif spec.feature_type == "categorical":
             labels = _categorical_group_labels(
@@ -632,29 +638,21 @@ def _read_reference_bins(path):
 
 
 def _read_reference_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read PSI reference metadata {path}: {exc}") from exc
-
-    metadata = PsiReferenceMetadata.from_dict(data)
-    if metadata.schema_version != PSI_REFERENCE_SCHEMA_VERSION:
-        raise MonitoringPipelineError(f"Unsupported PSI reference metadata schema version: {metadata.schema_version}")
-    return metadata
+    return read_metadata(
+        path,
+        PsiReferenceMetadata,
+        PSI_REFERENCE_SCHEMA_VERSION,
+        label="PSI reference metadata",
+    )
 
 
 def _read_weekly_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read PSI weekly metadata {path}: {exc}") from exc
-
-    metadata = PsiWeeklyMetadata.from_dict(data)
-    if metadata.schema_version != PSI_WEEKLY_SCHEMA_VERSION:
-        raise MonitoringPipelineError(f"Unsupported PSI weekly metadata schema version: {metadata.schema_version}")
-    return metadata
+    return read_metadata(
+        path,
+        PsiWeeklyMetadata,
+        PSI_WEEKLY_SCHEMA_VERSION,
+        label="PSI weekly metadata",
+    )
 
 
 def _versions_from_bins(bins):
@@ -1037,9 +1035,10 @@ def _build_counts_for_weeks(
     reference_bins,
     dry_run,
 ):
-    window_start = max(
-        to_date(deployment_start_date),
-        to_date(start_week_ending) - timedelta(days=6),
+    window_start = week_window_start(
+        start_week_ending,
+        deployment_start_date,
+        lookback_days=6,
     )
     files = discover_daily_input_files(
         output_dir,

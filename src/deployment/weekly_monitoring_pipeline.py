@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Maintain weekly live-deployment monitoring aggregates."""
+"""Maintain weekly live-deployment monitoring aggregates.
+
+This is the weekly monitoring stage: it owns Friday-ending week selection,
+aggregate creation and updates, CSV/metadata invariants, and serialized
+execution. PSI reference counts and PSI reports are delegated to
+:mod:`deployer.weekly_psi_monitoring`, which remains a deliberately named
+companion stage rather than a generic helper.
+"""
 
 import argparse
-import json
 import re
 import sys
 from dataclasses import dataclass
@@ -17,11 +23,18 @@ from deployer.monitoring_common import (
     atomic_write_csv,
     atomic_write_text,
     discover_prediction_files,
+    friday_on_or_after,
+    last_eligible_friday,
     load_prediction_window,
-    pipeline_lock,
+    metadata_text,
     print_files,
+    read_metadata,
+    run_serialized,
     to_date,
     utc_now,
+    validate_metadata_identity,
+    week_ending_range,
+    week_window_start,
 )
 
 WEEKLY_SCHEMA_VERSION = 1
@@ -43,6 +56,12 @@ NO_CLINICIAN_LABEL = "No clinician"
 MISSINGNESS_DIR = "daily_missingness"
 MISSINGNESS_SUFFIX = "_is_missing"
 SILENT_MISSINGNESS_PREFIX = "silent_deployment_input_missingness"
+
+first_friday_on_or_after = friday_on_or_after
+_metadata_text = metadata_text
+
+
+# Metadata schemas and readers
 
 
 @dataclass(frozen=True)
@@ -296,15 +315,7 @@ class SilentDeploymentMissingnessMetadata:
             raise MonitoringPipelineError(f"Invalid silent deployment missingness metadata: {exc}") from exc
 
 
-def last_eligible_friday(run_date):
-    """Return the latest Friday strictly before run_date."""
-    day = to_date(run_date) - timedelta(days=1)
-    return day - timedelta(days=(day.weekday() - WEEK_ENDING_WEEKDAY) % 7)
-
-
-def first_friday_on_or_after(start_date):
-    start_date = to_date(start_date)
-    return start_date + timedelta(days=(WEEK_ENDING_WEEKDAY - start_date.weekday()) % 7)
+# Row normalization, consistency checks, and path helpers
 
 
 def clean_clinician_names(series):
@@ -384,34 +395,19 @@ def _discover_missingness_files(output_dir, anchor, start_date, end_date):
     return [path for _, path in found]
 
 
-def _metadata_text(metadata):
-    return json.dumps(metadata.to_dict(), indent=2) + "\n"
-
-
 def _read_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read metadata {path}: {exc}") from exc
-
-    metadata = WeeklyAlertsMetadata.from_dict(data)
-    if metadata.schema_version != WEEKLY_SCHEMA_VERSION:
-        raise MonitoringPipelineError(f"Unsupported metadata schema version: {metadata.schema_version}")
-    return metadata
+    return read_metadata(
+        path,
+        WeeklyAlertsMetadata,
+        WEEKLY_SCHEMA_VERSION,
+        label="metadata",
+    )
 
 
 def _validate_metadata(metadata, anchor, deployment_start_date):
     if metadata.metric != WEEKLY_ALERTS_METRIC:
         raise MonitoringPipelineError(f"Metadata metric {metadata.metric!r} does not match {WEEKLY_ALERTS_METRIC!r}")
-    if metadata.anchor != anchor:
-        raise MonitoringPipelineError(f"Metadata anchor {metadata.anchor!r} does not match {anchor!r}")
-    if metadata.deployment_start_date != deployment_start_date:
-        raise MonitoringPipelineError(
-            "Metadata deployment start date "
-            f"{metadata.deployment_start_date.isoformat()} does not match "
-            f"{deployment_start_date.isoformat()}"
-        )
+    validate_metadata_identity(metadata, anchor, deployment_start_date)
     if metadata.clinician_column != CLINICIAN_COLUMN:
         raise MonitoringPipelineError(
             f"Metadata clinician column {metadata.clinician_column!r} does not match {CLINICIAN_COLUMN!r}"
@@ -421,16 +417,12 @@ def _validate_metadata(metadata, anchor, deployment_start_date):
 
 
 def _read_risk_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read metadata {path}: {exc}") from exc
-
-    metadata = WeeklyRiskScoresMetadata.from_dict(data)
-    if metadata.schema_version != WEEKLY_SCHEMA_VERSION:
-        raise MonitoringPipelineError(f"Unsupported metadata schema version: {metadata.schema_version}")
-    return metadata
+    return read_metadata(
+        path,
+        WeeklyRiskScoresMetadata,
+        WEEKLY_SCHEMA_VERSION,
+        label="metadata",
+    )
 
 
 def _validate_risk_metadata(metadata, anchor, deployment_start_date):
@@ -438,14 +430,7 @@ def _validate_risk_metadata(metadata, anchor, deployment_start_date):
         raise MonitoringPipelineError(
             f"Metadata metric {metadata.metric!r} does not match {WEEKLY_RISK_SCORES_METRIC!r}"
         )
-    if metadata.anchor != anchor:
-        raise MonitoringPipelineError(f"Metadata anchor {metadata.anchor!r} does not match {anchor!r}")
-    if metadata.deployment_start_date != deployment_start_date:
-        raise MonitoringPipelineError(
-            "Metadata deployment start date "
-            f"{metadata.deployment_start_date.isoformat()} does not match "
-            f"{deployment_start_date.isoformat()}"
-        )
+    validate_metadata_identity(metadata, anchor, deployment_start_date)
     if metadata.score_column != SCORE_COLUMN:
         raise MonitoringPipelineError(
             f"Metadata score column {metadata.score_column!r} does not match {SCORE_COLUMN!r}"
@@ -465,33 +450,21 @@ def _validate_risk_metadata(metadata, anchor, deployment_start_date):
 
 
 def _read_silent_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read silent deployment metadata {path}: {exc}") from exc
-
-    metadata = SilentDeploymentRiskScoresMetadata.from_dict(data)
-    if metadata.schema_version != SILENT_DEPLOYMENT_SCHEMA_VERSION:
-        raise MonitoringPipelineError(
-            f"Unsupported silent deployment metadata schema version: {metadata.schema_version}"
-        )
-    return metadata
+    return read_metadata(
+        path,
+        SilentDeploymentRiskScoresMetadata,
+        SILENT_DEPLOYMENT_SCHEMA_VERSION,
+        label="silent deployment metadata",
+    )
 
 
 def _read_missingness_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read weekly missingness metadata {path}: {exc}") from exc
-
-    metadata = WeeklyMissingnessMetadata.from_dict(data)
-    if metadata.schema_version != MISSINGNESS_SCHEMA_VERSION:
-        raise MonitoringPipelineError(
-            f"Unsupported weekly missingness metadata schema version: {metadata.schema_version}"
-        )
-    return metadata
+    return read_metadata(
+        path,
+        WeeklyMissingnessMetadata,
+        MISSINGNESS_SCHEMA_VERSION,
+        label="weekly missingness metadata",
+    )
 
 
 def _validate_missingness_metadata(metadata, anchor, deployment_start_date):
@@ -499,14 +472,7 @@ def _validate_missingness_metadata(metadata, anchor, deployment_start_date):
         raise MonitoringPipelineError(
             f"Metadata metric {metadata.metric!r} does not match {WEEKLY_MISSINGNESS_METRIC!r}"
         )
-    if metadata.anchor != anchor:
-        raise MonitoringPipelineError(f"Metadata anchor {metadata.anchor!r} does not match {anchor!r}")
-    if metadata.deployment_start_date != deployment_start_date:
-        raise MonitoringPipelineError(
-            "Metadata deployment start date "
-            f"{metadata.deployment_start_date.isoformat()} does not match "
-            f"{deployment_start_date.isoformat()}"
-        )
+    validate_metadata_identity(metadata, anchor, deployment_start_date)
     if metadata.cohort_column != COHORT_COLUMN or metadata.cohort_value != COHORT_VALUE:
         raise MonitoringPipelineError(f"Metadata cohort definition does not match {COHORT_COLUMN} == {COHORT_VALUE}")
     if metadata.missingness_suffix != MISSINGNESS_SUFFIX:
@@ -516,18 +482,12 @@ def _validate_missingness_metadata(metadata, anchor, deployment_start_date):
 
 
 def _read_silent_missingness_metadata(path):
-    path = Path(path)
-    try:
-        data = json.loads(path.read_text())
-    except (FileNotFoundError, json.JSONDecodeError) as exc:
-        raise MonitoringPipelineError(f"Unable to read silent deployment missingness metadata {path}: {exc}") from exc
-
-    metadata = SilentDeploymentMissingnessMetadata.from_dict(data)
-    if metadata.schema_version != SILENT_MISSINGNESS_SCHEMA_VERSION:
-        raise MonitoringPipelineError(
-            f"Unsupported silent deployment missingness metadata schema version: {metadata.schema_version}"
-        )
-    return metadata
+    return read_metadata(
+        path,
+        SilentDeploymentMissingnessMetadata,
+        SILENT_MISSINGNESS_SCHEMA_VERSION,
+        label="silent deployment missingness metadata",
+    )
 
 
 def _with_week_ending(df, date_col):
@@ -551,7 +511,7 @@ def _alerts_from_prediction_frame(df, first_week_ending, last_week_ending, date_
         counts = alerts.groupby(["week_ending", "_clinician"], dropna=False).size().unstack(fill_value=0)
         counts.columns.name = None
 
-    fridays = pd.date_range(first_week_ending, last_week_ending, freq="7D", name="week_ending")
+    fridays = week_ending_range(first_week_ending, last_week_ending)
     counts = counts.reindex(fridays, fill_value=0)
     if NO_CLINICIAN_LABEL not in counts.columns:
         counts[NO_CLINICIAN_LABEL] = 0
@@ -673,7 +633,7 @@ def _missingness_from_missingness_frame(df, first_week_ending, last_week_ending,
     cohort = df[df[COHORT_COLUMN] == COHORT_VALUE].copy()
     cohort = _with_week_ending(cohort, date_col)
 
-    fridays = pd.date_range(first_week_ending, last_week_ending, freq="7D", name="week_ending")
+    fridays = week_ending_range(first_week_ending, last_week_ending)
     if cohort.empty:
         table = pd.DataFrame({"week_ending": fridays, "encounter_count": 0})
         for name in feature_names:
@@ -702,7 +662,7 @@ def _build_missingness_table(
     date_col,
     dry_run,
 ):
-    window_start = max(deployment_start_date, first_week_ending - timedelta(days=4))
+    window_start = week_window_start(first_week_ending, deployment_start_date)
     files = _discover_missingness_files(
         output_dir,
         anchor,
@@ -739,7 +699,7 @@ def _build_alerts_table(
     date_col,
     dry_run,
 ):
-    window_start = max(deployment_start_date, first_week_ending - timedelta(days=4))
+    window_start = week_window_start(first_week_ending, deployment_start_date)
     files = discover_prediction_files(
         output_dir,
         anchor,
@@ -784,7 +744,7 @@ def _build_risk_scores_table(
     date_col,
     dry_run,
 ):
-    window_start = max(deployment_start_date, first_week_ending - timedelta(days=4))
+    window_start = week_window_start(first_week_ending, deployment_start_date)
     files = discover_prediction_files(
         output_dir,
         anchor,
@@ -858,7 +818,7 @@ def _merge_alerts(existing, new):
 
 def _reindex_week_range(df, deployment_start_date, last_week_ending):
     first_week_ending = first_friday_on_or_after(deployment_start_date)
-    fridays = pd.date_range(first_week_ending, last_week_ending, freq="7D", name="week_ending")
+    fridays = week_ending_range(first_week_ending, last_week_ending)
     clinician_columns = _order_clinician_columns([col for col in df.columns if col != "week_ending"])
     indexed = df.set_index(pd.to_datetime(df["week_ending"]))
     indexed = indexed.reindex(index=fridays, columns=clinician_columns, fill_value=0)
@@ -993,7 +953,7 @@ def _merge_missingness_counts(existing, new):
 
 def _reindex_missingness_weeks(df, deployment_start_date, last_week_ending):
     first_week_ending = first_friday_on_or_after(deployment_start_date)
-    fridays = pd.date_range(first_week_ending, last_week_ending, freq="7D", name="week_ending")
+    fridays = week_ending_range(first_week_ending, last_week_ending)
     feature_names = _missingness_feature_names_from_table(df)
     indexed = df.set_index(pd.to_datetime(df["week_ending"]))
     columns = ["encounter_count", *feature_names]
@@ -1022,6 +982,28 @@ def _missingness_counts_consistent(df, metadata):
     return True
 
 
+# Silent-source snapshots and baselines
+
+
+def _read_cached_source_metadata(csv_path, metadata_path, reader):
+    if csv_path.exists() and metadata_path.exists():
+        try:
+            return reader(metadata_path)
+        except MonitoringPipelineError:
+            return None
+    return None
+
+
+def _source_cache_needs_rebuild(csv_path, metadata, source_stat, anchor, *extra_checks):
+    return (
+        not csv_path.exists()
+        or metadata is None
+        or metadata.anchor != anchor
+        or metadata.source_mtime_ns != source_stat.st_mtime_ns
+        or any(check(metadata) for check in extra_checks)
+    )
+
+
 def _ensure_silent_snapshot(
     output_dir,
     anchor,
@@ -1035,12 +1017,7 @@ def _ensure_silent_snapshot(
     source_exists = source_path.exists()
     source_stat = source_path.stat() if source_exists else None
 
-    metadata = None
-    if silent_csv_path.exists() and silent_metadata_path.exists():
-        try:
-            metadata = _read_silent_metadata(silent_metadata_path)
-        except MonitoringPipelineError:
-            metadata = None
+    metadata = _read_cached_source_metadata(silent_csv_path, silent_metadata_path, _read_silent_metadata)
 
     if not source_exists:
         if silent_csv_path.exists() and metadata is not None:
@@ -1053,12 +1030,7 @@ def _ensure_silent_snapshot(
             return
         raise MonitoringPipelineError(f"Silent deployment source file not found: {source_path}")
 
-    needs_rebuild = (
-        not silent_csv_path.exists()
-        or metadata is None
-        or metadata.anchor != anchor
-        or metadata.source_mtime_ns != source_stat.st_mtime_ns
-    )
+    needs_rebuild = _source_cache_needs_rebuild(silent_csv_path, metadata, source_stat, anchor)
     if not needs_rebuild:
         return
 
@@ -1115,12 +1087,11 @@ def _ensure_silent_missingness_baseline(
     source_exists = source_path.exists()
     source_stat = source_path.stat() if source_exists else None
 
-    metadata = None
-    if silent_csv_path.exists() and silent_metadata_path.exists():
-        try:
-            metadata = _read_silent_missingness_metadata(silent_metadata_path)
-        except MonitoringPipelineError:
-            metadata = None
+    metadata = _read_cached_source_metadata(
+        silent_csv_path,
+        silent_metadata_path,
+        _read_silent_missingness_metadata,
+    )
 
     if not source_exists:
         if silent_csv_path.exists() and metadata is not None:
@@ -1134,12 +1105,12 @@ def _ensure_silent_missingness_baseline(
             )
         return
 
-    needs_rebuild = (
-        not silent_csv_path.exists()
-        or metadata is None
-        or metadata.anchor != anchor
-        or metadata.missingness_suffix != MISSINGNESS_SUFFIX
-        or metadata.source_mtime_ns != source_stat.st_mtime_ns
+    needs_rebuild = _source_cache_needs_rebuild(
+        silent_csv_path,
+        metadata,
+        source_stat,
+        anchor,
+        lambda cached: cached.missingness_suffix != MISSINGNESS_SUFFIX,
     )
     if not needs_rebuild:
         return
@@ -1191,43 +1162,44 @@ def _ensure_silent_missingness_baseline(
     print(f"[INFO] Silent deployment missingness baseline written to {silent_csv_path}")
 
 
-def _create_baseline(
-    deployment_start_date,
-    last_week_ending,
-    anchor,
-    output_dir,
-    date_col,
-    csv_path,
-    metadata_path,
-    dry_run,
-):
-    first_week_ending = first_friday_on_or_after(deployment_start_date)
-    if first_week_ending > last_week_ending:
-        raise MonitoringPipelineError(
-            f"No complete Friday-ending week between deployment start "
-            f"{deployment_start_date.isoformat()} and last eligible Friday "
-            f"{last_week_ending.isoformat()}"
+def _alerts_consistent(existing, metadata):
+    if existing.empty:
+        print("[WARN] Weekly alerts CSV is empty; rebuilding the baseline")
+        return False
+    existing_last = to_date(existing["week_ending"].max())
+    if existing_last != metadata.last_week_ending:
+        print("[WARN] Weekly alerts CSV and metadata disagree on the last week; rebuilding the baseline")
+        return False
+    return True
+
+
+def _alerts_combine(existing, new_table, deployment_start_date, last_week_ending):
+    return _merge_alerts(existing, new_table)
+
+
+def _risk_scores_combine(existing, new_table, deployment_start_date, last_week_ending):
+    if existing.empty:
+        combined = new_table.copy()
+    else:
+        combined = pd.concat(
+            [
+                existing[["week_ending", SCORE_COLUMN, REGIMEN_PREFIX_COLUMN]],
+                new_table,
+            ],
+            ignore_index=True,
         )
+    return combined.sort_values(
+        ["week_ending", REGIMEN_PREFIX_COLUMN, SCORE_COLUMN],
+        kind="mergesort",
+    ).reset_index(drop=True)
 
-    print(
-        f"[INFO] Creating weekly alerts baseline: weeks={first_week_ending.isoformat()}..{last_week_ending.isoformat()}"
-    )
-    table = _build_alerts_table(
-        deployment_start_date,
-        first_week_ending,
-        last_week_ending,
-        anchor,
-        output_dir,
-        date_col,
-        dry_run,
-    )
-    if dry_run:
-        return
 
-    table = _reindex_week_range(table, deployment_start_date, last_week_ending)
-    _write_alerts_csv(table, csv_path)
+def _missingness_combine(existing, new_table, deployment_start_date, last_week_ending):
+    return _merge_missingness_counts(existing, new_table)
 
-    metadata = WeeklyAlertsMetadata(
+
+def _alerts_metadata(anchor, deployment_start_date, last_week_ending, table, metadata):
+    return WeeklyAlertsMetadata(
         schema_version=WEEKLY_SCHEMA_VERSION,
         metric=WEEKLY_ALERTS_METRIC,
         anchor=anchor,
@@ -1238,96 +1210,10 @@ def _create_baseline(
         cohort_value=COHORT_VALUE,
         updated_at=utc_now(),
     )
-    atomic_write_text(_metadata_text(metadata), metadata_path)
-    print(f"[INFO] Weekly alerts baseline written to {csv_path}")
 
 
-def _update_baseline(
-    metadata,
-    run_date,
-    anchor,
-    output_dir,
-    date_col,
-    csv_path,
-    metadata_path,
-    dry_run,
-):
-    last_week_ending = last_eligible_friday(run_date)
-    first_new_week = metadata.last_week_ending + timedelta(days=7)
-    if first_new_week > last_week_ending:
-        print(f"[INFO] No new complete week after {metadata.last_week_ending.isoformat()}")
-        return
-
-    print(f"[INFO] Updating weekly alerts: weeks={first_new_week.isoformat()}..{last_week_ending.isoformat()}")
-    new_table = _build_alerts_table(
-        metadata.deployment_start_date,
-        first_new_week,
-        last_week_ending,
-        anchor,
-        output_dir,
-        date_col,
-        dry_run,
-    )
-    if dry_run:
-        return
-
-    existing = _read_alerts_csv(csv_path)
-    combined = _merge_alerts(existing, new_table)
-    combined = _reindex_week_range(combined, metadata.deployment_start_date, last_week_ending)
-    _write_alerts_csv(combined, csv_path)
-
-    updated_metadata = WeeklyAlertsMetadata(
-        schema_version=WEEKLY_SCHEMA_VERSION,
-        metric=WEEKLY_ALERTS_METRIC,
-        anchor=metadata.anchor,
-        deployment_start_date=metadata.deployment_start_date,
-        last_week_ending=last_week_ending,
-        clinician_column=metadata.clinician_column,
-        cohort_column=metadata.cohort_column,
-        cohort_value=metadata.cohort_value,
-        updated_at=utc_now(),
-    )
-    atomic_write_text(_metadata_text(updated_metadata), metadata_path)
-    print(f"[INFO] Weekly alerts updated through {last_week_ending.isoformat()}; rows={len(combined)}")
-
-
-def _create_risk_baseline(
-    deployment_start_date,
-    last_week_ending,
-    anchor,
-    output_dir,
-    date_col,
-    csv_path,
-    metadata_path,
-    dry_run,
-):
-    first_week_ending = first_friday_on_or_after(deployment_start_date)
-    if first_week_ending > last_week_ending:
-        raise MonitoringPipelineError(
-            f"No complete Friday-ending week between deployment start "
-            f"{deployment_start_date.isoformat()} and last eligible Friday "
-            f"{last_week_ending.isoformat()}"
-        )
-
-    print(
-        f"[INFO] Creating weekly risk scores baseline: "
-        f"weeks={first_week_ending.isoformat()}..{last_week_ending.isoformat()}"
-    )
-    table = _build_risk_scores_table(
-        deployment_start_date,
-        first_week_ending,
-        last_week_ending,
-        anchor,
-        output_dir,
-        date_col,
-        dry_run,
-    )
-    if dry_run:
-        return
-
-    _write_risk_scores_csv(table, csv_path)
-
-    metadata = WeeklyRiskScoresMetadata(
+def _risk_scores_metadata(anchor, deployment_start_date, last_week_ending, table, metadata):
+    return WeeklyRiskScoresMetadata(
         schema_version=WEEKLY_SCHEMA_VERSION,
         metric=WEEKLY_RISK_SCORES_METRIC,
         anchor=anchor,
@@ -1342,76 +1228,27 @@ def _create_risk_baseline(
         week_count=_week_count(table),
         updated_at=utc_now(),
     )
-    atomic_write_text(_metadata_text(metadata), metadata_path)
-    print(f"[INFO] Weekly risk scores baseline written to {csv_path}")
 
 
-def _update_risk_baseline(
-    metadata,
-    run_date,
-    anchor,
-    output_dir,
-    date_col,
-    csv_path,
-    metadata_path,
-    dry_run,
-):
-    last_week_ending = last_eligible_friday(run_date)
-    first_new_week = metadata.last_week_ending + timedelta(days=7)
-    if first_new_week > last_week_ending:
-        print(f"[INFO] No new complete risk-score week after {metadata.last_week_ending.isoformat()}")
-        return
-
-    print(f"[INFO] Updating weekly risk scores: weeks={first_new_week.isoformat()}..{last_week_ending.isoformat()}")
-    new_table = _build_risk_scores_table(
-        metadata.deployment_start_date,
-        first_new_week,
-        last_week_ending,
-        anchor,
-        output_dir,
-        date_col,
-        dry_run,
-    )
-    if dry_run:
-        return
-
-    existing = _read_risk_scores_csv(csv_path)
-    if existing.empty:
-        combined = new_table.copy()
-    else:
-        combined = pd.concat(
-            [
-                existing[["week_ending", SCORE_COLUMN, REGIMEN_PREFIX_COLUMN]],
-                new_table,
-            ],
-            ignore_index=True,
-        )
-    combined = combined.sort_values(
-        ["week_ending", REGIMEN_PREFIX_COLUMN, SCORE_COLUMN],
-        kind="mergesort",
-    ).reset_index(drop=True)
-    _write_risk_scores_csv(combined, csv_path)
-
-    updated_metadata = WeeklyRiskScoresMetadata(
-        schema_version=WEEKLY_SCHEMA_VERSION,
-        metric=WEEKLY_RISK_SCORES_METRIC,
-        anchor=metadata.anchor,
-        deployment_start_date=metadata.deployment_start_date,
+def _missingness_metadata(anchor, deployment_start_date, last_week_ending, table, metadata):
+    return WeeklyMissingnessMetadata(
+        schema_version=MISSINGNESS_SCHEMA_VERSION,
+        metric=WEEKLY_MISSINGNESS_METRIC,
+        anchor=anchor,
+        deployment_start_date=deployment_start_date,
         last_week_ending=last_week_ending,
-        score_column=metadata.score_column,
-        regimen_column=metadata.regimen_column,
-        regimen_prefix_column=metadata.regimen_prefix_column,
-        cohort_column=metadata.cohort_column,
-        cohort_value=metadata.cohort_value,
-        row_count=len(combined),
-        week_count=_week_count(combined),
+        cohort_column=COHORT_COLUMN,
+        cohort_value=COHORT_VALUE,
+        missingness_suffix=MISSINGNESS_SUFFIX,
+        feature_columns=tuple(_missingness_feature_names_from_table(table)),
+        row_count=len(table),
+        week_count=_week_count(table),
         updated_at=utc_now(),
     )
-    atomic_write_text(_metadata_text(updated_metadata), metadata_path)
-    print(f"[INFO] Weekly risk scores updated through {last_week_ending.isoformat()}; rows={len(combined)}")
 
 
-def _create_missingness_baseline(
+def _create_weekly_baseline(
+    spec,
     deployment_start_date,
     last_week_ending,
     anchor,
@@ -1430,10 +1267,10 @@ def _create_missingness_baseline(
         )
 
     print(
-        f"[INFO] Creating weekly missingness baseline: "
+        f"[INFO] Creating weekly {spec['label']} baseline: "
         f"weeks={first_week_ending.isoformat()}..{last_week_ending.isoformat()}"
     )
-    table = _build_missingness_table(
+    table = spec["build_table"](
         deployment_start_date,
         first_week_ending,
         last_week_ending,
@@ -1445,29 +1282,16 @@ def _create_missingness_baseline(
     if table is None:
         return
 
-    table = _reindex_missingness_weeks(table, deployment_start_date, last_week_ending)
-    _write_missingness_counts_csv(table, csv_path)
-
-    feature_columns = _missingness_feature_names_from_table(table)
-    metadata = WeeklyMissingnessMetadata(
-        schema_version=MISSINGNESS_SCHEMA_VERSION,
-        metric=WEEKLY_MISSINGNESS_METRIC,
-        anchor=anchor,
-        deployment_start_date=deployment_start_date,
-        last_week_ending=last_week_ending,
-        cohort_column=COHORT_COLUMN,
-        cohort_value=COHORT_VALUE,
-        missingness_suffix=MISSINGNESS_SUFFIX,
-        feature_columns=tuple(feature_columns),
-        row_count=len(table),
-        week_count=_week_count(table),
-        updated_at=utc_now(),
-    )
+    if spec["reindex"] is not None:
+        table = spec["reindex"](table, deployment_start_date, last_week_ending)
+    spec["write_csv"](table, csv_path)
+    metadata = spec["metadata"](anchor, deployment_start_date, last_week_ending, table, None)
     atomic_write_text(_metadata_text(metadata), metadata_path)
-    print(f"[INFO] Weekly missingness baseline written to {csv_path}")
+    print(f"[INFO] Weekly {spec['label']} baseline written to {csv_path}")
 
 
-def _update_missingness_baseline(
+def _update_weekly_baseline(
+    spec,
     metadata,
     run_date,
     anchor,
@@ -1480,11 +1304,11 @@ def _update_missingness_baseline(
     last_week_ending = last_eligible_friday(run_date)
     first_new_week = metadata.last_week_ending + timedelta(days=7)
     if first_new_week > last_week_ending:
-        print(f"[INFO] No new complete missingness week after {metadata.last_week_ending.isoformat()}")
+        print(f"[INFO] No new complete {spec['no_new_week_label']} after {metadata.last_week_ending.isoformat()}")
         return
 
-    print(f"[INFO] Updating weekly missingness: weeks={first_new_week.isoformat()}..{last_week_ending.isoformat()}")
-    new_table = _build_missingness_table(
+    print(f"[INFO] Updating weekly {spec['label']}: weeks={first_new_week.isoformat()}..{last_week_ending.isoformat()}")
+    new_table = spec["build_table"](
         metadata.deployment_start_date,
         first_new_week,
         last_week_ending,
@@ -1496,28 +1320,273 @@ def _update_missingness_baseline(
     if new_table is None:
         return
 
-    existing = _read_missingness_counts_csv(csv_path)
-    combined = _merge_missingness_counts(existing, new_table)
-    combined = _reindex_missingness_weeks(combined, metadata.deployment_start_date, last_week_ending)
-    _write_missingness_counts_csv(combined, csv_path)
-
-    feature_columns = _missingness_feature_names_from_table(combined)
-    updated_metadata = WeeklyMissingnessMetadata(
-        schema_version=MISSINGNESS_SCHEMA_VERSION,
-        metric=WEEKLY_MISSINGNESS_METRIC,
-        anchor=metadata.anchor,
-        deployment_start_date=metadata.deployment_start_date,
-        last_week_ending=last_week_ending,
-        cohort_column=metadata.cohort_column,
-        cohort_value=metadata.cohort_value,
-        missingness_suffix=metadata.missingness_suffix,
-        feature_columns=tuple(feature_columns),
-        row_count=len(combined),
-        week_count=_week_count(combined),
-        updated_at=utc_now(),
+    existing = spec["read_csv"](csv_path)
+    combined = spec["combine"](
+        existing,
+        new_table,
+        metadata.deployment_start_date,
+        last_week_ending,
+    )
+    if spec["reindex"] is not None:
+        combined = spec["reindex"](combined, metadata.deployment_start_date, last_week_ending)
+    spec["write_csv"](combined, csv_path)
+    updated_metadata = spec["metadata"](
+        anchor,
+        metadata.deployment_start_date,
+        last_week_ending,
+        combined,
+        metadata,
     )
     atomic_write_text(_metadata_text(updated_metadata), metadata_path)
-    print(f"[INFO] Weekly missingness updated through {last_week_ending.isoformat()}; rows={len(combined)}")
+    print(f"[INFO] Weekly {spec['label']} updated through {last_week_ending.isoformat()}; rows={len(combined)}")
+
+
+# Generic weekly aggregate orchestration
+
+
+def _run_weekly_aggregate(
+    spec,
+    deployment_start_date,
+    run_date,
+    anchor,
+    output_dir,
+    date_col,
+    dry_run,
+):
+    csv_path, metadata_path = spec["paths"](output_dir, anchor)[:2]
+    last_week_ending = last_eligible_friday(run_date)
+    create_kwargs = {
+        "deployment_start_date": deployment_start_date,
+        "last_week_ending": last_week_ending,
+        "anchor": anchor,
+        "output_dir": output_dir,
+        "date_col": date_col,
+        "csv_path": csv_path,
+        "metadata_path": metadata_path,
+        "dry_run": dry_run,
+    }
+
+    csv_exists = csv_path.exists()
+    metadata_exists = metadata_path.exists()
+    if not csv_exists or not metadata_exists:
+        if csv_exists != metadata_exists:
+            print(f"[WARN] Weekly {spec['label']} CSV and metadata are inconsistent; rebuilding the baseline")
+        spec["create"](spec, **create_kwargs)
+        return
+
+    metadata = spec["read_metadata"](metadata_path)
+    spec["validate_metadata"](metadata, anchor, deployment_start_date)
+    existing = spec["read_csv"](csv_path)
+    if not spec["consistent"](existing, metadata):
+        if spec["warn_on_inconsistent"]:
+            print(f"[WARN] Weekly {spec['label']} CSV and metadata are inconsistent; rebuilding the baseline")
+        spec["create"](spec, **create_kwargs)
+        return
+
+    spec["update"](
+        spec,
+        metadata=metadata,
+        run_date=run_date,
+        anchor=anchor,
+        output_dir=output_dir,
+        date_col=date_col,
+        csv_path=csv_path,
+        metadata_path=metadata_path,
+        dry_run=dry_run,
+    )
+
+
+_ALERTS_AGGREGATE = {
+    "label": "alerts",
+    "no_new_week_label": "week",
+    "paths": _paths,
+    "read_metadata": _read_metadata,
+    "validate_metadata": _validate_metadata,
+    "read_csv": _read_alerts_csv,
+    "consistent": _alerts_consistent,
+    "warn_on_inconsistent": False,
+    "build_table": _build_alerts_table,
+    "reindex": _reindex_week_range,
+    "write_csv": _write_alerts_csv,
+    "combine": _alerts_combine,
+    "metadata": _alerts_metadata,
+    "create": _create_weekly_baseline,
+    "update": _update_weekly_baseline,
+}
+
+_RISK_SCORES_AGGREGATE = {
+    "label": "risk scores",
+    "no_new_week_label": "risk-score week",
+    "paths": _risk_paths,
+    "read_metadata": _read_risk_metadata,
+    "validate_metadata": _validate_risk_metadata,
+    "read_csv": _read_risk_scores_csv,
+    "consistent": _risk_scores_consistent,
+    "warn_on_inconsistent": True,
+    "build_table": _build_risk_scores_table,
+    "reindex": None,
+    "write_csv": _write_risk_scores_csv,
+    "combine": _risk_scores_combine,
+    "metadata": _risk_scores_metadata,
+    "create": _create_weekly_baseline,
+    "update": _update_weekly_baseline,
+}
+
+_MISSINGNESS_AGGREGATE = {
+    "label": "missingness",
+    "no_new_week_label": "missingness week",
+    "paths": _missingness_paths,
+    "read_metadata": _read_missingness_metadata,
+    "validate_metadata": _validate_missingness_metadata,
+    "read_csv": _read_missingness_counts_csv,
+    "consistent": _missingness_counts_consistent,
+    "warn_on_inconsistent": True,
+    "build_table": _build_missingness_table,
+    "reindex": _reindex_missingness_weeks,
+    "write_csv": _write_missingness_counts_csv,
+    "combine": _missingness_combine,
+    "metadata": _missingness_metadata,
+    "create": _create_weekly_baseline,
+    "update": _update_weekly_baseline,
+}
+
+
+def _create_baseline(
+    deployment_start_date,
+    last_week_ending,
+    anchor,
+    output_dir,
+    date_col,
+    csv_path,
+    metadata_path,
+    dry_run,
+):
+    _create_weekly_baseline(
+        _ALERTS_AGGREGATE,
+        deployment_start_date,
+        last_week_ending,
+        anchor,
+        output_dir,
+        date_col,
+        csv_path,
+        metadata_path,
+        dry_run,
+    )
+
+
+def _update_baseline(
+    metadata,
+    run_date,
+    anchor,
+    output_dir,
+    date_col,
+    csv_path,
+    metadata_path,
+    dry_run,
+):
+    _update_weekly_baseline(
+        _ALERTS_AGGREGATE,
+        metadata,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        csv_path,
+        metadata_path,
+        dry_run,
+    )
+
+
+def _create_risk_baseline(
+    deployment_start_date,
+    last_week_ending,
+    anchor,
+    output_dir,
+    date_col,
+    csv_path,
+    metadata_path,
+    dry_run,
+):
+    _create_weekly_baseline(
+        _RISK_SCORES_AGGREGATE,
+        deployment_start_date,
+        last_week_ending,
+        anchor,
+        output_dir,
+        date_col,
+        csv_path,
+        metadata_path,
+        dry_run,
+    )
+
+
+def _update_risk_baseline(
+    metadata,
+    run_date,
+    anchor,
+    output_dir,
+    date_col,
+    csv_path,
+    metadata_path,
+    dry_run,
+):
+    _update_weekly_baseline(
+        _RISK_SCORES_AGGREGATE,
+        metadata,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        csv_path,
+        metadata_path,
+        dry_run,
+    )
+
+
+def _create_missingness_baseline(
+    deployment_start_date,
+    last_week_ending,
+    anchor,
+    output_dir,
+    date_col,
+    csv_path,
+    metadata_path,
+    dry_run,
+):
+    _create_weekly_baseline(
+        _MISSINGNESS_AGGREGATE,
+        deployment_start_date,
+        last_week_ending,
+        anchor,
+        output_dir,
+        date_col,
+        csv_path,
+        metadata_path,
+        dry_run,
+    )
+
+
+def _update_missingness_baseline(
+    metadata,
+    run_date,
+    anchor,
+    output_dir,
+    date_col,
+    csv_path,
+    metadata_path,
+    dry_run,
+):
+    _update_weekly_baseline(
+        _MISSINGNESS_AGGREGATE,
+        metadata,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        csv_path,
+        metadata_path,
+        dry_run,
+    )
 
 
 def _run_alerts_aggregate(
@@ -1528,68 +1597,14 @@ def _run_alerts_aggregate(
     date_col,
     dry_run,
 ):
-    csv_path, metadata_path, _ = _paths(output_dir, anchor)
-    last_week_ending = last_eligible_friday(run_date)
-
-    csv_exists = csv_path.exists()
-    metadata_exists = metadata_path.exists()
-
-    if not csv_exists or not metadata_exists:
-        if csv_exists != metadata_exists:
-            print("[WARN] Weekly alerts CSV and metadata are inconsistent; rebuilding the baseline")
-        _create_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    metadata = _read_metadata(metadata_path)
-    _validate_metadata(metadata, anchor, deployment_start_date)
-    existing = _read_alerts_csv(csv_path)
-    if existing.empty:
-        print("[WARN] Weekly alerts CSV is empty; rebuilding the baseline")
-        _create_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    existing_last = to_date(existing["week_ending"].max())
-    if existing_last != metadata.last_week_ending:
-        print("[WARN] Weekly alerts CSV and metadata disagree on the last week; rebuilding the baseline")
-        _create_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    _update_baseline(
-        metadata=metadata,
-        run_date=run_date,
-        anchor=anchor,
-        output_dir=output_dir,
-        date_col=date_col,
-        csv_path=csv_path,
-        metadata_path=metadata_path,
-        dry_run=dry_run,
+    _run_weekly_aggregate(
+        _ALERTS_AGGREGATE,
+        deployment_start_date,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        dry_run,
     )
 
 
@@ -1601,53 +1616,14 @@ def _run_risk_scores_aggregate(
     date_col,
     dry_run,
 ):
-    csv_path, metadata_path, _, _ = _risk_paths(output_dir, anchor)
-    last_week_ending = last_eligible_friday(run_date)
-
-    csv_exists = csv_path.exists()
-    metadata_exists = metadata_path.exists()
-
-    if not csv_exists or not metadata_exists:
-        if csv_exists != metadata_exists:
-            print("[WARN] Weekly risk scores CSV and metadata are inconsistent; rebuilding the baseline")
-        _create_risk_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    metadata = _read_risk_metadata(metadata_path)
-    _validate_risk_metadata(metadata, anchor, deployment_start_date)
-    existing = _read_risk_scores_csv(csv_path)
-    if not _risk_scores_consistent(existing, metadata):
-        print("[WARN] Weekly risk scores CSV and metadata are inconsistent; rebuilding the baseline")
-        _create_risk_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    _update_risk_baseline(
-        metadata=metadata,
-        run_date=run_date,
-        anchor=anchor,
-        output_dir=output_dir,
-        date_col=date_col,
-        csv_path=csv_path,
-        metadata_path=metadata_path,
-        dry_run=dry_run,
+    _run_weekly_aggregate(
+        _RISK_SCORES_AGGREGATE,
+        deployment_start_date,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        dry_run,
     )
 
 
@@ -1659,53 +1635,14 @@ def _run_missingness_aggregate(
     date_col,
     dry_run,
 ):
-    csv_path, metadata_path, _, _ = _missingness_paths(output_dir, anchor)
-    last_week_ending = last_eligible_friday(run_date)
-
-    csv_exists = csv_path.exists()
-    metadata_exists = metadata_path.exists()
-
-    if not csv_exists or not metadata_exists:
-        if csv_exists != metadata_exists:
-            print("[WARN] Weekly missingness CSV and metadata are inconsistent; rebuilding the baseline")
-        _create_missingness_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    metadata = _read_missingness_metadata(metadata_path)
-    _validate_missingness_metadata(metadata, anchor, deployment_start_date)
-    existing = _read_missingness_counts_csv(csv_path)
-    if not _missingness_counts_consistent(existing, metadata):
-        print("[WARN] Weekly missingness CSV and metadata are inconsistent; rebuilding the baseline")
-        _create_missingness_baseline(
-            deployment_start_date=deployment_start_date,
-            last_week_ending=last_week_ending,
-            anchor=anchor,
-            output_dir=output_dir,
-            date_col=date_col,
-            csv_path=csv_path,
-            metadata_path=metadata_path,
-            dry_run=dry_run,
-        )
-        return
-
-    _update_missingness_baseline(
-        metadata=metadata,
-        run_date=run_date,
-        anchor=anchor,
-        output_dir=output_dir,
-        date_col=date_col,
-        csv_path=csv_path,
-        metadata_path=metadata_path,
-        dry_run=dry_run,
+    _run_weekly_aggregate(
+        _MISSINGNESS_AGGREGATE,
+        deployment_start_date,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        dry_run,
     )
 
 
@@ -1774,6 +1711,9 @@ def _run_once(deployment_start_date, run_date, anchor, output_dir, dry_run):
     )
 
 
+# Pipeline entry point
+
+
 def run_pipeline(
     deployment_start_date,
     run_date,
@@ -1784,25 +1724,15 @@ def run_pipeline(
     deployment_start_date = to_date(deployment_start_date)
     run_date = to_date(run_date)
     _, _, lock_path = _paths(output_dir, anchor)
-
-    if dry_run:
-        _run_once(
-            deployment_start_date,
-            run_date,
-            anchor,
-            output_dir,
-            dry_run=True,
-        )
-        return
-
-    with pipeline_lock(lock_path):
-        _run_once(
-            deployment_start_date,
-            run_date,
-            anchor,
-            output_dir,
-            dry_run=False,
-        )
+    run_serialized(
+        _run_once,
+        lock_path=lock_path,
+        dry_run=dry_run,
+        deployment_start_date=deployment_start_date,
+        run_date=run_date,
+        anchor=anchor,
+        output_dir=output_dir,
+    )
 
 
 def parse_args(argv=None):

@@ -2,16 +2,18 @@
 
 import argparse
 import fcntl
+import json
 import os
 import re
 import tempfile
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
 
 REQUIRED_PREDICTION_COLUMNS = ("mrn", "regimen", "ed_pred_prob")
+WEEK_ENDING_WEEKDAY = 4  # Friday, with Monday == 0
 
 
 class MonitoringPipelineError(RuntimeError):
@@ -44,8 +46,66 @@ def argparse_date(value):
         ) from exc
 
 
+def friday_on_or_after(value):
+    day = to_date(value)
+    return day + timedelta(days=(WEEK_ENDING_WEEKDAY - day.weekday()) % 7)
+
+
+def last_eligible_friday(run_date):
+    day = to_date(run_date) - timedelta(days=1)
+    return day - timedelta(days=(day.weekday() - WEEK_ENDING_WEEKDAY) % 7)
+
+
+def week_ending_range(first_week_ending, last_week_ending):
+    return pd.date_range(
+        first_week_ending,
+        last_week_ending,
+        freq="7D",
+        name="week_ending",
+    )
+
+
+def week_window_start(first_week_ending, deployment_start_date, lookback_days=4):
+    return max(
+        to_date(deployment_start_date),
+        to_date(first_week_ending) - timedelta(days=lookback_days),
+    )
+
+
 def utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def metadata_text(metadata):
+    return json.dumps(metadata.to_dict(), indent=2) + "\n"
+
+
+def read_metadata(path, cls, schema_version, *, label):
+    path = Path(path)
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        raise MonitoringPipelineError(f"Unable to read {label} {path}: {exc}") from exc
+
+    metadata = cls.from_dict(data)
+    if metadata.schema_version != schema_version:
+        raise MonitoringPipelineError(
+            f"Unsupported {label} schema version: {metadata.schema_version}"
+        )
+    return metadata
+
+
+def validate_metadata_identity(metadata, anchor, deployment_start_date):
+    if metadata.anchor != anchor:
+        raise MonitoringPipelineError(
+            f"Metadata anchor {metadata.anchor!r} does not match {anchor!r}"
+        )
+    if metadata.deployment_start_date != deployment_start_date:
+        raise MonitoringPipelineError(
+            "Metadata deployment start date "
+            f"{metadata.deployment_start_date.isoformat()} does not match "
+            f"{deployment_start_date.isoformat()}"
+        )
 
 
 def atomic_write_csv(df, path):
@@ -107,6 +167,15 @@ def pipeline_lock(lock_path):
             yield
         finally:
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def run_serialized(run_once, *, lock_path, dry_run, **kwargs):
+    if dry_run:
+        run_once(dry_run=True, **kwargs)
+        return
+
+    with pipeline_lock(lock_path):
+        run_once(dry_run=False, **kwargs)
 
 
 def prediction_file_pattern(anchor):
