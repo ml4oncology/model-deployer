@@ -7,7 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from deployer.monitoring_common import (
+from deployer.monitoring.monitoring_common import (
+    WEEKLY_INTERIM_DIR,
     MonitoringPipelineError,
     atomic_write_csv,
     atomic_write_text,
@@ -33,7 +34,7 @@ PSI_WEEKLY_SCHEMA_VERSION = 1
 PSI_BINNING_VERSION = 1
 PSI_N_QUANTILE_BINS = 10
 PSI_EPSILON = 1e-6
-PSI_INTERIM_DIR = "interim_weekly_monitoring"
+PSI_INTERIM_DIR = WEEKLY_INTERIM_DIR
 PSI_CATEGORICAL_GROUPS = {
     "cancer_site": "cancer_site_",
     "regimen": "regimen_",

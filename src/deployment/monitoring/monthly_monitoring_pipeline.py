@@ -10,7 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 from deployer.data_prep.constants import MONTHLY_POSTFIX_MAP, PROJ_NAME
-from deployer.monitoring_common import (
+from deployer.monitoring.monitoring_common import (
+    MONTHLY_INTERIM_DIR,
     MonitoringPipelineError,
     argparse_date,
     atomic_write_csv,
@@ -155,7 +156,7 @@ def _combine_labels(existing, new, date_col):
 
 
 def _paths(output_dir, anchor):
-    interim_dir = Path(output_dir) / "interim_monthly_monitoring"
+    interim_dir = Path(output_dir) / MONTHLY_INTERIM_DIR
     return (
         interim_dir / f"monthly_monitoring_{anchor}_pred_w_ED_labels.csv",
         interim_dir / f"monthly_monitoring_{anchor}_pred_w_ED_labels_metadata.json",

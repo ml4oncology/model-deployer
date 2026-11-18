@@ -4,7 +4,7 @@
 This is the weekly monitoring stage: it owns Friday-ending week selection,
 aggregate creation and updates, CSV/metadata invariants, and serialized
 execution. PSI reference counts and PSI reports are delegated to
-:mod:`deployer.weekly_psi_monitoring`, which remains a deliberately named
+:mod:`deployer.monitoring.weekly_psi_monitoring`, which remains a deliberately named
 companion stage rather than a generic helper.
 """
 
@@ -16,8 +16,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
-from deployer import weekly_psi_monitoring
-from deployer.monitoring_common import (
+from deployer.monitoring import weekly_psi_monitoring
+from deployer.monitoring.monitoring_common import (
+    WEEKLY_INTERIM_DIR,
     MonitoringPipelineError,
     argparse_date,
     atomic_write_csv,
@@ -329,7 +330,7 @@ def _order_clinician_columns(columns):
 
 
 def _paths(output_dir, anchor):
-    interim_dir = Path(output_dir) / "interim_weekly_monitoring"
+    interim_dir = Path(output_dir) / WEEKLY_INTERIM_DIR
     return (
         interim_dir / f"weekly_alerts_{anchor}.csv",
         interim_dir / f"weekly_alerts_{anchor}_metadata.json",
@@ -338,7 +339,7 @@ def _paths(output_dir, anchor):
 
 
 def _risk_paths(output_dir, anchor):
-    interim_dir = Path(output_dir) / "interim_weekly_monitoring"
+    interim_dir = Path(output_dir) / WEEKLY_INTERIM_DIR
     return (
         interim_dir / f"weekly_risk_scores_{anchor}.csv",
         interim_dir / f"weekly_risk_scores_{anchor}_metadata.json",
@@ -348,7 +349,7 @@ def _risk_paths(output_dir, anchor):
 
 
 def _missingness_paths(output_dir, anchor):
-    interim_dir = Path(output_dir) / "interim_weekly_monitoring"
+    interim_dir = Path(output_dir) / WEEKLY_INTERIM_DIR
     return (
         interim_dir / f"weekly_missingness_counts_{anchor}.csv",
         interim_dir / f"weekly_missingness_counts_{anchor}_metadata.json",

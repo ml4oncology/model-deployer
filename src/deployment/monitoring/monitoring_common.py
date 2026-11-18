@@ -14,6 +14,8 @@ import pandas as pd
 
 REQUIRED_PREDICTION_COLUMNS = ("mrn", "regimen", "ed_pred_prob")
 WEEK_ENDING_WEEKDAY = 4  # Friday, with Monday == 0
+WEEKLY_INTERIM_DIR = "interim_weekly_monitoring"
+MONTHLY_INTERIM_DIR = "interim_monthly_monitoring"
 
 
 class MonitoringPipelineError(RuntimeError):

@@ -13,8 +13,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from deployer.evaluation import DATE_COL_MAP
-from deployer.monitoring_common import MonitoringPipelineError, argparse_date, to_date
-from deployer.subgroup_metrics import CATEGORY_REGISTRY, compute_category_metrics, compute_subgroup_metrics
+from deployer.monitoring.monitoring_common import MonitoringPipelineError, argparse_date, to_date
+from deployer.monitoring.subgroup_metrics import CATEGORY_REGISTRY, compute_category_metrics, compute_subgroup_metrics
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch
 from PIL import Image
