@@ -7,7 +7,7 @@ import os
 import re
 import tempfile
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -73,7 +73,7 @@ def week_window_start(first_week_ending, deployment_start_date, lookback_days=4)
 
 
 def utc_now():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def metadata_text(metadata):
