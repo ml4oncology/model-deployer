@@ -37,6 +37,7 @@ NAVY = "#122341"
 MID = "#24669C"
 BLUE = "#287AB7"
 ORANGE = "#E58A49"
+GREEN = "#3E8E7E"
 SILENT = "#667789"
 MUTED = "#53677C"
 GRID = "#DDE6EF"
@@ -207,6 +208,8 @@ def weekly_paths(weekly_dir, anchor):
     return {
         "alerts": interim / f"weekly_alerts_{anchor}.csv",
         "alerts_metadata": interim / f"weekly_alerts_{anchor}_metadata.json",
+        "unique_patients": interim / f"weekly_unique_patients_{anchor}.csv",
+        "unique_patients_metadata": interim / f"weekly_unique_patients_{anchor}_metadata.json",
         "risk_scores": interim / f"weekly_risk_scores_{anchor}.csv",
         "risk_metadata": interim / f"weekly_risk_scores_{anchor}_metadata.json",
         "missingness": interim / f"weekly_missingness_counts_{anchor}.csv",
@@ -230,7 +233,13 @@ def metadata_date(path):
 
 
 def metadata_gate_passes(paths):
-    metadata_keys = ("alerts_metadata", "risk_metadata", "missingness_metadata", "psi_metadata")
+    metadata_keys = (
+        "alerts_metadata",
+        "unique_patients_metadata",
+        "risk_metadata",
+        "missingness_metadata",
+        "psi_metadata",
+    )
     dates = [(key, metadata_date(paths[key])) for key in metadata_keys]
     unique_dates = {date for _, date in dates}
     if len(unique_dates) != 1:
@@ -271,7 +280,7 @@ def available_month_window(df, date_col, run_date):
 # cumulative values use all available weeks up to that week.
 # ---------------------------------------------------------------------------
 
-WEEKLY_REPORTING_KEYS = ("alerts", "risk_scores", "missingness", "psi_scores")
+WEEKLY_REPORTING_KEYS = ("alerts", "unique_patients", "risk_scores", "missingness", "psi_scores")
 
 
 def weekly_report_week(paths, run_date):
@@ -336,6 +345,15 @@ def load_weekly_data(paths, report_week):
     alerts = alerts.loc[alerts["week_ending"] <= report_timestamp].sort_values("week_ending")
     clinician_columns = [column for column in alerts.columns if column != "week_ending"]
     alert_totals = alerts[clinician_columns].sum(axis=1).to_numpy(dtype=float)
+
+    unique_patients = with_datetime_week(pd.read_csv(paths["unique_patients"]))
+    unique_patients = unique_patients.loc[unique_patients["week_ending"] <= report_timestamp].sort_values("week_ending")
+    cumulative_patients = (
+        unique_patients.set_index("week_ending")["cumulative_patients"]
+        .reindex(alerts["week_ending"], fill_value=0)
+        .to_numpy(dtype=float)
+    )
+
     report_alert_row = alerts.loc[alerts["week_ending"] == report_timestamp].iloc[0]
     clinician_cumulative = alerts[clinician_columns].sum().sort_values(ascending=False)
     top_clinicians = clinician_cumulative.head(15).index.tolist()
@@ -417,6 +435,7 @@ def load_weekly_data(paths, report_week):
         "weeks": alerts["week_ending"].to_numpy(),
         "weekly_counts": alert_totals,
         "cumulative_counts": np.cumsum(alert_totals),
+        "cumulative_patients": cumulative_patients,
         "alerts_this_week": float(report_alert_row[clinician_columns].sum()),
         "cumulative_alerts": float(alerts[clinician_columns].to_numpy().sum()),
         "clinicians": top_clinicians,
@@ -533,7 +552,7 @@ def metric_row(frame, subgroup):
 # ---------------------------------------------------------------------------
 
 
-def draw_prediction_space(data, report_week, max_alerts, scale=1.0):
+def draw_prediction_space(data, report_week, max_patients, scale=1.0):
     fig = figure(13.7)
     header(
         fig,
@@ -556,13 +575,14 @@ def draw_prediction_space(data, report_week, max_alerts, scale=1.0):
         fig,
         0.045,
         0.784,
-        "Weekly count (left axis)  ·  Cumulative count (right axis)",
+        "Weekly alerts (left axis)  ·  Cumulative alerts and unique patients (right axis)",
         8.1,
         color=MUTED,
     )
     weeks = pd.to_datetime(data["weeks"])
     weekly = np.asarray(data["weekly_counts"], dtype=float)
     cumulative = np.asarray(data["cumulative_counts"], dtype=float)
+    cumulative_patients = np.asarray(data["cumulative_patients"], dtype=float)
     ax = axis(fig, [0.102, 0.653, 0.777, 0.114])
     ax.plot(weeks, weekly, "o-", color=BLUE, lw=2.1, ms=4.4, zorder=4)
     ax.set_ylim(0, upper_limit(weekly))
@@ -588,12 +608,26 @@ def draw_prediction_space(data, report_week, max_alerts, scale=1.0):
     ax2.set_zorder(4)
     ax2.patch.set_visible(False)
     ax2.plot(weeks, cumulative, "s-", color=ORANGE, lw=2, ms=3.7, zorder=4)
-    right_upper = float(cumulative.max()) * 1.07 or 1.0
+    ax2.plot(weeks, cumulative_patients, "^-", color=GREEN, lw=2, ms=3.9, zorder=5)
+    latest_patients = float(cumulative_patients[-1])
+    ax2.annotate(
+        f"{latest_patients:,.0f}",
+        (weeks[-1], latest_patients),
+        xytext=(-4, 6),
+        textcoords="offset points",
+        ha="right",
+        va="bottom",
+        fontsize=6.3,
+        color=GREEN,
+        zorder=6,
+        annotation_clip=False,
+    )
+    right_upper = max(float(np.max(cumulative, initial=0)), float(np.max(cumulative_patients, initial=0))) * 1.07 or 1.0
     ax2.set_ylim(max(0, float(cumulative.min()) * 0.94), right_upper)
     ax2.locator_params(axis="y", nbins=4)
     ax2.tick_params(axis="y", labelsize=8, labelcolor=ORANGE, length=0)
     ax2.set_ylabel(
-        f"Cumulative alerts\nTarget: {max_alerts:,}",
+        f"Cumulative counts\nTarget: {max_patients:,} patients",
         fontsize=8.1,
         color=ORANGE,
         labelpad=10,
@@ -601,14 +635,15 @@ def draw_prediction_space(data, report_week, max_alerts, scale=1.0):
     ax2.spines["top"].set_visible(False)
     fig.legend(
         handles=[
-            Line2D([0], [0], color=BLUE, lw=2, marker="o", ms=4, label="Weekly"),
-            Line2D([0], [0], color=ORANGE, lw=2, marker="s", ms=3.5, label="Cumulative"),
+            Line2D([0], [0], color=BLUE, lw=2, marker="o", ms=4, label="Weekly alerts"),
+            Line2D([0], [0], color=ORANGE, lw=2, marker="s", ms=3.5, label="Cumulative alerts"),
+            Line2D([0], [0], color=GREEN, lw=2, marker="^", ms=3.8, label="Cumulative unique patients"),
         ],
         loc="center right",
         bbox_to_anchor=(0.961, 0.805),
-        ncol=2,
+        ncol=1,
         frameon=False,
-        fontsize=8.0,
+        fontsize=7.7,
     )
 
     card(fig, 0.025, 0.336, 0.95, 0.254)
@@ -1207,7 +1242,7 @@ def combine_images(images, output_dir, filename, scale=1.0):
 
 
 def run_pipeline(
-    max_alerts,
+    max_patients,
     run_date,
     weekly_dir,
     monthly_dir,
@@ -1229,7 +1264,7 @@ def run_pipeline(
     weekly_data = load_weekly_data(weekly_input_paths, report_week)
     monthly_data = load_monthly_data(monthly_input_paths, run_date, anchor, consented_physicians)
     sections = [
-        draw_prediction_space(weekly_data, report_week, max_alerts, scale=image_scale),
+        draw_prediction_space(weekly_data, report_week, max_patients, scale=image_scale),
         draw_input_space(weekly_data, scale=image_scale),
         draw_monthly_clinical_subgroups(monthly_data, run_date, scale=image_scale),
         draw_monthly_cancer_groups(monthly_data, run_date, scale=image_scale),
@@ -1247,7 +1282,7 @@ def run_pipeline(
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Generate the weekly and monthly ED-risk monitoring dashboard.")
     parser.add_argument(
-        "--max-alerts", required=True, type=int, help="Cumulative alert target for the weekly dashboard."
+        "--max-patients", required=True, type=int, help="Cumulative patient target for the weekly dashboard."
     )
     parser.add_argument("--run-date", required=True, type=argparse_date, help="Metadata run date (YYYYMMDD).")
     parser.add_argument("--interim-weekly-dir", required=True, type=Path)
@@ -1276,7 +1311,7 @@ def main(argv=None):
     args = parse_args(argv)
     try:
         run_pipeline(
-            max_alerts=args.max_alerts,
+            max_patients=args.max_patients,
             run_date=args.run_date,
             weekly_dir=args.interim_weekly_dir,
             monthly_dir=args.interim_monthly_dir,

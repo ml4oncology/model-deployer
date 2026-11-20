@@ -33,7 +33,7 @@ def run_pipeline(
     info_dir,
     dashboard_output_dir,
     consented_physician_file,
-    max_alerts,
+    max_patients,
     dry_run=False,
     image_scale=1.0,
 ):
@@ -72,7 +72,7 @@ def run_pipeline(
     print("[INFO] Generating monitoring dashboard...")
     dashboard = _dashboard_module()
     output_paths = dashboard.run_pipeline(
-        max_alerts=max_alerts,
+        max_patients=max_patients,
         run_date=run_date,
         weekly_dir=weekly_dir,
         monthly_dir=monthly_dir,
@@ -110,9 +110,9 @@ def parse_args(argv=None):
         help="CSV containing consented EpicProvider values.",
     )
     parser.add_argument(
-        "--max-alerts",
+        "--max-patients",
         type=int,
-        help="Cumulative alert target for the weekly dashboard.",
+        help="Cumulative patient target for the weekly dashboard.",
         default=1157,
     )
     parser.add_argument(
@@ -145,7 +145,7 @@ def main(argv=None):
             info_dir=args.info_dir,
             dashboard_output_dir=args.dashboard_output_dir,
             consented_physician_file=args.consented_physician_file,
-            max_alerts=args.max_alerts,
+            max_patients=args.max_patients,
             dry_run=args.dry_run,
             image_scale=args.image_scale,
         )

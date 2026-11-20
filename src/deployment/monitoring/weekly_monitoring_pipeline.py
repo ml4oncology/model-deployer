@@ -45,13 +45,20 @@ WEEKLY_SCHEMA_VERSION = 1
 SILENT_DEPLOYMENT_SCHEMA_VERSION = 1
 MISSINGNESS_SCHEMA_VERSION = 1
 SILENT_MISSINGNESS_SCHEMA_VERSION = 1
+UNIQUE_PATIENTS_SCHEMA_VERSION = 1
 WEEKLY_ALERTS_METRIC = "weekly_alerts"
 WEEKLY_RISK_SCORES_METRIC = "weekly_risk_scores"
 WEEKLY_MISSINGNESS_METRIC = "weekly_missingness"
+UNIQUE_PATIENTS_REGISTRY_METRIC = "unique_patients_registry"
+WEEKLY_UNIQUE_PATIENTS_METRIC = "weekly_unique_patients"
 WEEK_ENDING_WEEKDAY = 4  # Friday, with Monday == 0
 COHORT_COLUMN = "first_trt"
 COHORT_VALUE = 1
 CLINICIAN_COLUMN = "VISIT_PROVIDER_NAME"
+MRN_COLUMN = "mrn"
+FIRST_SEEN_DATE_COLUMN = "first_seen_date"
+NEW_PATIENTS_COLUMN = "new_patients"
+CUMULATIVE_PATIENTS_COLUMN = "cumulative_patients"
 SCORE_COLUMN = "ed_pred_prob"
 REGIMEN_COLUMN = "regimen"
 REGIMEN_PREFIX_COLUMN = "regimen_prefix"
@@ -112,6 +119,116 @@ class WeeklyAlertsMetadata:
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise MonitoringPipelineError(f"Invalid metadata: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class UniquePatientsRegistryMetadata:
+    schema_version: int
+    metric: str
+    anchor: str
+    deployment_start_date: date
+    last_week_ending: date
+    mrn_column: str
+    first_seen_date_column: str
+    cohort_column: str
+    cohort_value: int
+    row_count: int
+    updated_at: str
+
+    def to_dict(self):
+        return {
+            "schema_version": self.schema_version,
+            "metric": self.metric,
+            "anchor": self.anchor,
+            "deployment_start_date": self.deployment_start_date.isoformat(),
+            "last_week_ending": self.last_week_ending.isoformat(),
+            "mrn_column": self.mrn_column,
+            "first_seen_date_column": self.first_seen_date_column,
+            "cohort_definition": {
+                "cohort_column": self.cohort_column,
+                "cohort_value": self.cohort_value,
+            },
+            "row_count": self.row_count,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        try:
+            cohort_definition = data["cohort_definition"]
+            return cls(
+                schema_version=int(data["schema_version"]),
+                metric=str(data["metric"]),
+                anchor=str(data["anchor"]),
+                deployment_start_date=to_date(data["deployment_start_date"]),
+                last_week_ending=to_date(data["last_week_ending"]),
+                mrn_column=str(data["mrn_column"]),
+                first_seen_date_column=str(data["first_seen_date_column"]),
+                cohort_column=str(cohort_definition["cohort_column"]),
+                cohort_value=int(cohort_definition["cohort_value"]),
+                row_count=int(data["row_count"]),
+                updated_at=str(data["updated_at"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise MonitoringPipelineError(f"Invalid unique patient registry metadata: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class WeeklyUniquePatientsMetadata:
+    schema_version: int
+    metric: str
+    anchor: str
+    deployment_start_date: date
+    last_week_ending: date
+    cohort_column: str
+    cohort_value: int
+    new_patients_column: str
+    cumulative_patients_column: str
+    row_count: int
+    week_count: int
+    patient_count: int
+    updated_at: str
+
+    def to_dict(self):
+        return {
+            "schema_version": self.schema_version,
+            "metric": self.metric,
+            "anchor": self.anchor,
+            "deployment_start_date": self.deployment_start_date.isoformat(),
+            "last_week_ending": self.last_week_ending.isoformat(),
+            "cohort_definition": {
+                "cohort_column": self.cohort_column,
+                "cohort_value": self.cohort_value,
+            },
+            "new_patients_column": self.new_patients_column,
+            "cumulative_patients_column": self.cumulative_patients_column,
+            "row_count": self.row_count,
+            "week_count": self.week_count,
+            "patient_count": self.patient_count,
+            "updated_at": self.updated_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        try:
+            cohort_definition = data["cohort_definition"]
+            return cls(
+                schema_version=int(data["schema_version"]),
+                metric=str(data["metric"]),
+                anchor=str(data["anchor"]),
+                deployment_start_date=to_date(data["deployment_start_date"]),
+                last_week_ending=to_date(data["last_week_ending"]),
+                cohort_column=str(cohort_definition["cohort_column"]),
+                cohort_value=int(cohort_definition["cohort_value"]),
+                new_patients_column=str(data["new_patients_column"]),
+                cumulative_patients_column=str(data["cumulative_patients_column"]),
+                row_count=int(data["row_count"]),
+                week_count=int(data["week_count"]),
+                patient_count=int(data["patient_count"]),
+                updated_at=str(data["updated_at"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise MonitoringPipelineError(f"Invalid weekly unique patient metadata: {exc}") from exc
 
 
 @dataclass(frozen=True)
@@ -341,6 +458,16 @@ def _paths(output_dir, anchor):
     )
 
 
+def _unique_patient_paths(output_dir, anchor):
+    interim_dir = Path(output_dir) / WEEKLY_INTERIM_DIR
+    return (
+        interim_dir / f"unique_patients_{anchor}.csv",
+        interim_dir / f"unique_patients_{anchor}_metadata.json",
+        interim_dir / f"weekly_unique_patients_{anchor}.csv",
+        interim_dir / f"weekly_unique_patients_{anchor}_metadata.json",
+    )
+
+
 def _risk_paths(output_dir, anchor):
     interim_dir = Path(output_dir) / WEEKLY_INTERIM_DIR
     return (
@@ -418,6 +545,57 @@ def _validate_metadata(metadata, anchor, deployment_start_date):
         )
     if metadata.cohort_column != COHORT_COLUMN or metadata.cohort_value != COHORT_VALUE:
         raise MonitoringPipelineError(f"Metadata alert definition does not match {COHORT_COLUMN} == {COHORT_VALUE}")
+
+
+def _read_unique_patient_registry_metadata(path):
+    return read_metadata(
+        path,
+        UniquePatientsRegistryMetadata,
+        UNIQUE_PATIENTS_SCHEMA_VERSION,
+        label="unique patient registry metadata",
+    )
+
+
+def _validate_unique_patient_registry_metadata(metadata, anchor, deployment_start_date):
+    if metadata.metric != UNIQUE_PATIENTS_REGISTRY_METRIC:
+        raise MonitoringPipelineError(
+            f"Metadata metric {metadata.metric!r} does not match {UNIQUE_PATIENTS_REGISTRY_METRIC!r}"
+        )
+    validate_metadata_identity(metadata, anchor, deployment_start_date)
+    if metadata.mrn_column != MRN_COLUMN or metadata.first_seen_date_column != FIRST_SEEN_DATE_COLUMN:
+        raise MonitoringPipelineError(
+            f"Unique patient registry columns do not match {MRN_COLUMN!r}, {FIRST_SEEN_DATE_COLUMN!r}"
+        )
+    if metadata.cohort_column != COHORT_COLUMN or metadata.cohort_value != COHORT_VALUE:
+        raise MonitoringPipelineError(f"Metadata cohort definition does not match {COHORT_COLUMN} == {COHORT_VALUE}")
+
+
+def _read_weekly_unique_patients_metadata(path):
+    return read_metadata(
+        path,
+        WeeklyUniquePatientsMetadata,
+        UNIQUE_PATIENTS_SCHEMA_VERSION,
+        label="weekly unique patient metadata",
+    )
+
+
+def _validate_weekly_unique_patients_metadata(metadata, anchor, deployment_start_date):
+    if metadata.metric != WEEKLY_UNIQUE_PATIENTS_METRIC:
+        raise MonitoringPipelineError(
+            f"Metadata metric {metadata.metric!r} does not match {WEEKLY_UNIQUE_PATIENTS_METRIC!r}"
+        )
+    validate_metadata_identity(metadata, anchor, deployment_start_date)
+    if metadata.cohort_column != COHORT_COLUMN or metadata.cohort_value != COHORT_VALUE:
+        raise MonitoringPipelineError(f"Metadata cohort definition does not match {COHORT_COLUMN} == {COHORT_VALUE}")
+    if metadata.new_patients_column != NEW_PATIENTS_COLUMN:
+        raise MonitoringPipelineError(
+            f"Metadata new patient column {metadata.new_patients_column!r} does not match {NEW_PATIENTS_COLUMN!r}"
+        )
+    if metadata.cumulative_patients_column != CUMULATIVE_PATIENTS_COLUMN:
+        raise MonitoringPipelineError(
+            "Metadata cumulative patient column "
+            f"{metadata.cumulative_patients_column!r} does not match {CUMULATIVE_PATIENTS_COLUMN!r}"
+        )
 
 
 def _read_risk_metadata(path):
@@ -780,6 +958,71 @@ def _build_alerts_table(
     return _alerts_from_prediction_frame(df, consented_physicians, first_week_ending, last_week_ending, date_col)
 
 
+def _unique_patients_from_prediction_frame(df, consented_physicians, date_col):
+    missing = [col for col in (COHORT_COLUMN, CLINICIAN_COLUMN, MRN_COLUMN, date_col) if col not in df.columns]
+    if missing:
+        raise MonitoringPipelineError(f"Missing required weekly unique patient column(s): {missing}")
+
+    eligible = df.loc[(df[COHORT_COLUMN] == COHORT_VALUE) & consented_provider_mask(df, consented_physicians)].copy()
+    if eligible.empty:
+        return pd.DataFrame(columns=[MRN_COLUMN, FIRST_SEEN_DATE_COLUMN])
+
+    mrn = eligible[MRN_COLUMN].astype("string").str.strip()
+    valid_mrn = mrn.notna() & mrn.ne("").fillna(False)
+    eligible = eligible.loc[valid_mrn].copy()
+    eligible[MRN_COLUMN] = mrn.loc[valid_mrn].astype(str)
+
+    dates = pd.to_datetime(eligible[date_col], errors="coerce")
+    if dates.isna().any():
+        raise MonitoringPipelineError(f"Invalid {date_col!r} value(s) in weekly unique patient source rows")
+    eligible = eligible.loc[dates.dt.weekday <= WEEK_ENDING_WEEKDAY].copy()
+    dates = dates.loc[eligible.index]
+    eligible[FIRST_SEEN_DATE_COLUMN] = dates
+
+    return (
+        eligible.groupby(MRN_COLUMN, as_index=False)[FIRST_SEEN_DATE_COLUMN]
+        .min()
+        .sort_values(MRN_COLUMN, kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def _build_unique_patients_registry(
+    deployment_start_date,
+    first_week_ending,
+    last_week_ending,
+    anchor,
+    output_dir,
+    date_col,
+    consented_physicians,
+    dry_run,
+):
+    window_start = week_window_start(first_week_ending, deployment_start_date)
+    files = discover_prediction_files(output_dir, anchor, window_start, last_week_ending)
+    print(
+        f"[INFO] Aggregating weekly unique patients: "
+        f"weeks={first_week_ending.isoformat()}..{last_week_ending.isoformat()} "
+        f"daily_files={len(files)}"
+    )
+    print_files(files)
+
+    if not files:
+        raise MonitoringPipelineError(
+            "No daily prediction files found for weekly unique patients window "
+            f"{window_start.isoformat()} to {last_week_ending.isoformat()}"
+        )
+    if dry_run:
+        return None
+
+    df = load_prediction_window(files, date_col, window_start, last_week_ending)
+    if df.empty:
+        raise MonitoringPipelineError(
+            "No prediction rows found for weekly unique patients window "
+            f"{window_start.isoformat()} to {last_week_ending.isoformat()}"
+        )
+    return _unique_patients_from_prediction_frame(df, consented_physicians, date_col)
+
+
 def _build_risk_scores_table(
     deployment_start_date,
     first_week_ending,
@@ -881,6 +1124,170 @@ def _write_alerts_csv(df, path):
 
 def _week_count(df):
     return int(df["week_ending"].nunique()) if not df.empty else 0
+
+
+def _read_unique_patients_registry_csv(path):
+    path = Path(path)
+    try:
+        df = pd.read_csv(path)
+    except (FileNotFoundError, pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
+        raise MonitoringPipelineError(f"Unable to read unique patient registry {path}: {exc}") from exc
+
+    missing = [col for col in (MRN_COLUMN, FIRST_SEEN_DATE_COLUMN) if col not in df.columns]
+    if missing:
+        raise MonitoringPipelineError(f"Unique patient registry is missing required column(s) {missing}: {path}")
+
+    mrn = df[MRN_COLUMN].astype("string").str.strip()
+    if not (mrn.notna() & mrn.ne("").fillna(False)).all():
+        raise MonitoringPipelineError(f"Unique patient registry contains missing MRN values: {path}")
+    if mrn.duplicated().any():
+        raise MonitoringPipelineError(f"Unique patient registry contains duplicate MRN values: {path}")
+
+    try:
+        dates = pd.to_datetime(df[FIRST_SEEN_DATE_COLUMN], errors="raise")
+    except (TypeError, ValueError) as exc:
+        raise MonitoringPipelineError(f"Invalid first seen date in unique patient registry {path}: {exc}") from exc
+    if dates.isna().any():
+        raise MonitoringPipelineError(f"Unique patient registry contains missing first seen dates: {path}")
+
+    table = pd.DataFrame({MRN_COLUMN: mrn.astype(str), FIRST_SEEN_DATE_COLUMN: dates})
+    return table.sort_values(MRN_COLUMN, kind="mergesort").reset_index(drop=True)
+
+
+def _merge_unique_patients_registries(existing, new):
+    frames = [frame for frame in (existing, new) if frame is not None and not frame.empty]
+    if not frames:
+        return pd.DataFrame(columns=[MRN_COLUMN, FIRST_SEEN_DATE_COLUMN])
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined[MRN_COLUMN] = combined[MRN_COLUMN].astype("string").str.strip()
+    combined[FIRST_SEEN_DATE_COLUMN] = pd.to_datetime(combined[FIRST_SEEN_DATE_COLUMN])
+    return (
+        combined.groupby(MRN_COLUMN, as_index=False)[FIRST_SEEN_DATE_COLUMN]
+        .min()
+        .sort_values(MRN_COLUMN, kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
+def _write_unique_patients_registry_csv(df, path):
+    output = df[[MRN_COLUMN, FIRST_SEEN_DATE_COLUMN]].copy()
+    if output.empty:
+        output[FIRST_SEEN_DATE_COLUMN] = pd.Series(dtype="string")
+    else:
+        output[FIRST_SEEN_DATE_COLUMN] = pd.to_datetime(output[FIRST_SEEN_DATE_COLUMN]).dt.strftime("%Y-%m-%d")
+    atomic_write_csv(output.sort_values(MRN_COLUMN, kind="mergesort"), path)
+
+
+def _unique_patients_registry_consistent(df, metadata):
+    if len(df) != metadata.row_count:
+        return False
+    if df.empty:
+        return True
+    if df[FIRST_SEEN_DATE_COLUMN].max() > pd.Timestamp(metadata.last_week_ending):
+        return False
+    return True
+
+
+def _unique_patients_registry_metadata(anchor, deployment_start_date, last_week_ending, table, metadata):
+    return UniquePatientsRegistryMetadata(
+        schema_version=UNIQUE_PATIENTS_SCHEMA_VERSION,
+        metric=UNIQUE_PATIENTS_REGISTRY_METRIC,
+        anchor=anchor,
+        deployment_start_date=deployment_start_date,
+        last_week_ending=last_week_ending,
+        mrn_column=MRN_COLUMN,
+        first_seen_date_column=FIRST_SEEN_DATE_COLUMN,
+        cohort_column=COHORT_COLUMN,
+        cohort_value=COHORT_VALUE,
+        row_count=len(table),
+        updated_at=utc_now(),
+    )
+
+
+def _weekly_unique_patients_from_registry(registry, deployment_start_date, last_week_ending):
+    first_week_ending = first_friday_on_or_after(deployment_start_date)
+    fridays = week_ending_range(first_week_ending, last_week_ending)
+    weekly_rows = _with_week_ending(registry, FIRST_SEEN_DATE_COLUMN)
+
+    counts = weekly_rows.groupby("week_ending", sort=True).size().rename(NEW_PATIENTS_COLUMN)
+    counts = counts.reindex(fridays, fill_value=0).astype(int)
+    table = pd.DataFrame(
+        {
+            "week_ending": fridays,
+            NEW_PATIENTS_COLUMN: counts.to_numpy(),
+            CUMULATIVE_PATIENTS_COLUMN: counts.cumsum().to_numpy(dtype=int),
+        }
+    )
+    table.index.name = "week_ending"
+    return table.reset_index(drop=True)
+
+
+def _read_weekly_unique_patients_csv(path):
+    path = Path(path)
+    try:
+        df = pd.read_csv(path)
+    except (FileNotFoundError, pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
+        raise MonitoringPipelineError(f"Unable to read weekly unique patients {path}: {exc}") from exc
+
+    required = ["week_ending", NEW_PATIENTS_COLUMN, CUMULATIVE_PATIENTS_COLUMN]
+    missing = [col for col in required if col not in df.columns]
+    if missing:
+        raise MonitoringPipelineError(f"Weekly unique patients file is missing required column(s) {missing}: {path}")
+
+    try:
+        df["week_ending"] = pd.to_datetime(df["week_ending"], errors="raise")
+    except (TypeError, ValueError) as exc:
+        raise MonitoringPipelineError(f"Invalid week_ending value in weekly unique patients {path}: {exc}") from exc
+    if df["week_ending"].duplicated().any():
+        raise MonitoringPipelineError(f"Weekly unique patients file contains duplicate week_ending values: {path}")
+
+    for column in (NEW_PATIENTS_COLUMN, CUMULATIVE_PATIENTS_COLUMN):
+        try:
+            df[column] = pd.to_numeric(df[column], errors="raise")
+        except (TypeError, ValueError) as exc:
+            raise MonitoringPipelineError(f"Invalid {column} value in weekly unique patients {path}: {exc}") from exc
+        if df[column].isna().any() or (df[column] < 0).any():
+            raise MonitoringPipelineError(f"Invalid {column} value in weekly unique patients {path}")
+        df[column] = df[column].astype(int)
+
+    return df[required].sort_values("week_ending", kind="mergesort").reset_index(drop=True)
+
+
+def _write_weekly_unique_patients_csv(df, path):
+    output = df.copy()
+    output["week_ending"] = pd.to_datetime(output["week_ending"]).dt.strftime("%Y-%m-%d")
+    atomic_write_csv(output, path)
+
+
+def _weekly_unique_patients_consistent(df, metadata):
+    if df.empty or len(df) != metadata.row_count or _week_count(df) != metadata.week_count:
+        return False
+    if to_date(df["week_ending"].max()) != metadata.last_week_ending:
+        return False
+    if not df[CUMULATIVE_PATIENTS_COLUMN].eq(df[NEW_PATIENTS_COLUMN].cumsum()).all():
+        return False
+    if int(df[CUMULATIVE_PATIENTS_COLUMN].iloc[-1]) != metadata.patient_count:
+        return False
+    return True
+
+
+def _weekly_unique_patients_metadata(anchor, deployment_start_date, last_week_ending, table, metadata):
+    return WeeklyUniquePatientsMetadata(
+        schema_version=UNIQUE_PATIENTS_SCHEMA_VERSION,
+        metric=WEEKLY_UNIQUE_PATIENTS_METRIC,
+        anchor=anchor,
+        deployment_start_date=deployment_start_date,
+        last_week_ending=last_week_ending,
+        cohort_column=COHORT_COLUMN,
+        cohort_value=COHORT_VALUE,
+        new_patients_column=NEW_PATIENTS_COLUMN,
+        cumulative_patients_column=CUMULATIVE_PATIENTS_COLUMN,
+        row_count=len(table),
+        week_count=_week_count(table),
+        patient_count=int(table[CUMULATIVE_PATIENTS_COLUMN].iloc[-1]),
+        updated_at=utc_now(),
+    )
 
 
 def _read_risk_scores_csv(path):
@@ -1449,6 +1856,177 @@ def _run_weekly_aggregate(
     )
 
 
+def _create_unique_patients_baseline(
+    deployment_start_date,
+    last_week_ending,
+    anchor,
+    output_dir,
+    date_col,
+    registry_path,
+    registry_metadata_path,
+    weekly_path,
+    weekly_metadata_path,
+    consented_physicians,
+    dry_run,
+):
+    first_week_ending = first_friday_on_or_after(deployment_start_date)
+    if first_week_ending > last_week_ending:
+        raise MonitoringPipelineError(
+            f"No complete Friday-ending week between deployment start "
+            f"{deployment_start_date.isoformat()} and last eligible Friday "
+            f"{last_week_ending.isoformat()}"
+        )
+
+    print(
+        f"[INFO] Creating weekly unique patient baseline: "
+        f"weeks={first_week_ending.isoformat()}..{last_week_ending.isoformat()}"
+    )
+    registry = _build_unique_patients_registry(
+        deployment_start_date,
+        first_week_ending,
+        last_week_ending,
+        anchor,
+        output_dir,
+        date_col,
+        consented_physicians,
+        dry_run,
+    )
+    if registry is None:
+        return
+
+    weekly = _weekly_unique_patients_from_registry(registry, deployment_start_date, last_week_ending)
+    _write_unique_patients_registry_csv(registry, registry_path)
+    _write_weekly_unique_patients_csv(weekly, weekly_path)
+    registry_metadata = _unique_patients_registry_metadata(
+        anchor, deployment_start_date, last_week_ending, registry, None
+    )
+    weekly_metadata = _weekly_unique_patients_metadata(anchor, deployment_start_date, last_week_ending, weekly, None)
+    atomic_write_text(_metadata_text(registry_metadata), registry_metadata_path)
+    atomic_write_text(_metadata_text(weekly_metadata), weekly_metadata_path)
+    print(
+        f"[INFO] Weekly unique patient baseline written to {weekly_path}; "
+        f"registry={registry_path}, patients={len(registry)}"
+    )
+
+
+def _update_unique_patients_baseline(
+    registry_metadata,
+    last_week_ending,
+    deployment_start_date,
+    anchor,
+    output_dir,
+    date_col,
+    registry_path,
+    registry_metadata_path,
+    weekly_path,
+    weekly_metadata_path,
+    consented_physicians,
+    dry_run,
+):
+    first_new_week = registry_metadata.last_week_ending + timedelta(days=7)
+    print(f"[INFO] Updating weekly unique patients: weeks={first_new_week.isoformat()}..{last_week_ending.isoformat()}")
+    new_registry = _build_unique_patients_registry(
+        deployment_start_date,
+        first_new_week,
+        last_week_ending,
+        anchor,
+        output_dir,
+        date_col,
+        consented_physicians,
+        dry_run,
+    )
+    if new_registry is None:
+        return
+
+    existing = _read_unique_patients_registry_csv(registry_path)
+    combined = _merge_unique_patients_registries(existing, new_registry)
+    weekly = _weekly_unique_patients_from_registry(combined, deployment_start_date, last_week_ending)
+
+    _write_unique_patients_registry_csv(combined, registry_path)
+    _write_weekly_unique_patients_csv(weekly, weekly_path)
+    updated_registry_metadata = _unique_patients_registry_metadata(
+        anchor, deployment_start_date, last_week_ending, combined, registry_metadata
+    )
+    updated_weekly_metadata = _weekly_unique_patients_metadata(
+        anchor, deployment_start_date, last_week_ending, weekly, None
+    )
+    atomic_write_text(_metadata_text(updated_registry_metadata), registry_metadata_path)
+    atomic_write_text(_metadata_text(updated_weekly_metadata), weekly_metadata_path)
+    print(f"[INFO] Weekly unique patients updated through {last_week_ending.isoformat()}; patients={len(combined)}")
+
+
+def _run_unique_patients_aggregate(
+    deployment_start_date,
+    run_date,
+    anchor,
+    output_dir,
+    date_col,
+    consented_physicians,
+    dry_run,
+):
+    registry_path, registry_metadata_path, weekly_path, weekly_metadata_path = _unique_patient_paths(output_dir, anchor)
+    last_week_ending = last_eligible_friday(run_date)
+    paths = (registry_path, registry_metadata_path, weekly_path, weekly_metadata_path)
+    create_kwargs = {
+        "deployment_start_date": deployment_start_date,
+        "last_week_ending": last_week_ending,
+        "anchor": anchor,
+        "output_dir": output_dir,
+        "date_col": date_col,
+        "registry_path": registry_path,
+        "registry_metadata_path": registry_metadata_path,
+        "weekly_path": weekly_path,
+        "weekly_metadata_path": weekly_metadata_path,
+        "consented_physicians": consented_physicians,
+        "dry_run": dry_run,
+    }
+
+    if not all(path.exists() for path in paths):
+        if any(path.exists() for path in paths):
+            print("[WARN] Weekly unique patient files are inconsistent; rebuilding the baseline")
+        _create_unique_patients_baseline(**create_kwargs)
+        return
+
+    registry_metadata = _read_unique_patient_registry_metadata(registry_metadata_path)
+    _validate_unique_patient_registry_metadata(registry_metadata, anchor, deployment_start_date)
+    weekly_metadata = _read_weekly_unique_patients_metadata(weekly_metadata_path)
+    _validate_weekly_unique_patients_metadata(weekly_metadata, anchor, deployment_start_date)
+
+    registry = _read_unique_patients_registry_csv(registry_path)
+    weekly = _read_weekly_unique_patients_csv(weekly_path)
+    consistent = (
+        registry_metadata.last_week_ending == weekly_metadata.last_week_ending
+        and _unique_patients_registry_consistent(registry, registry_metadata)
+        and _weekly_unique_patients_consistent(weekly, weekly_metadata)
+    )
+    if not consistent:
+        if dry_run:
+            print("[WARN] Weekly unique patient files are inconsistent; would rebuild the baseline")
+            return
+        print("[WARN] Weekly unique patient files are inconsistent; rebuilding the baseline")
+        _create_unique_patients_baseline(**create_kwargs)
+        return
+
+    if registry_metadata.last_week_ending >= last_week_ending:
+        print(f"[INFO] No new complete unique-patient week after {registry_metadata.last_week_ending.isoformat()}")
+        return
+
+    _update_unique_patients_baseline(
+        registry_metadata=registry_metadata,
+        last_week_ending=last_week_ending,
+        deployment_start_date=deployment_start_date,
+        anchor=anchor,
+        output_dir=output_dir,
+        date_col=date_col,
+        registry_path=registry_path,
+        registry_metadata_path=registry_metadata_path,
+        weekly_path=weekly_path,
+        weekly_metadata_path=weekly_metadata_path,
+        consented_physicians=consented_physicians,
+        dry_run=dry_run,
+    )
+
+
 _ALERTS_AGGREGATE = {
     "label": "alerts",
     "no_new_week_label": "week",
@@ -1751,6 +2329,15 @@ def _run_once(deployment_start_date, run_date, anchor, output_dir, consented_phy
     )
 
     _run_alerts_aggregate(
+        deployment_start_date,
+        run_date,
+        anchor,
+        output_dir,
+        date_col,
+        consented_physicians,
+        dry_run,
+    )
+    _run_unique_patients_aggregate(
         deployment_start_date,
         run_date,
         anchor,
