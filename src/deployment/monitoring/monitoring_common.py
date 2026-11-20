@@ -13,6 +13,8 @@ from pathlib import Path
 import pandas as pd
 
 REQUIRED_PREDICTION_COLUMNS = ("mrn", "regimen", "ed_pred_prob")
+CONSENTED_PHYSICIAN_PROVIDER_COLUMN = "EpicProvider"
+CONSENTED_PHYSICIAN_ENABLED_COLUMN = "Enabled"
 WEEK_ENDING_WEEKDAY = 4  # Friday, with Monday == 0
 WEEKLY_INTERIM_DIR = "interim_weekly_monitoring"
 MONTHLY_INTERIM_DIR = "interim_monthly_monitoring"
@@ -286,6 +288,32 @@ def validate_prediction_columns(df, date_col):
         raise MonitoringPipelineError(
             f"Missing required prediction column(s): {missing}"
         )
+
+
+def load_consented_physicians(path):
+    frame = pd.read_csv(path)
+    required = [CONSENTED_PHYSICIAN_PROVIDER_COLUMN, CONSENTED_PHYSICIAN_ENABLED_COLUMN]
+    missing = [column for column in required if column not in frame.columns]
+    if missing:
+        raise MonitoringPipelineError(f"Consented physician file is missing required column(s): {missing}")
+
+    provider = frame[CONSENTED_PHYSICIAN_PROVIDER_COLUMN].astype("string").str.strip()
+    enabled = (
+        frame[CONSENTED_PHYSICIAN_ENABLED_COLUMN].astype("string").str.strip().str.upper().eq("TRUE").fillna(False)
+    )
+    valid_provider = provider.notna() & provider.ne("").fillna(False)
+    consented = set(provider.loc[enabled & valid_provider].tolist())
+    if not consented:
+        raise MonitoringPipelineError(f"No consented physicians found in {path}.")
+    return consented
+
+
+def consented_provider_mask(df, consented_physicians, column="VISIT_PROVIDER_NAME"):
+    if column not in df.columns:
+        raise MonitoringPipelineError(f"Missing required consent column: {column!r}")
+    provider = df[column].astype("string").str.strip()
+    valid_provider = provider.notna() & provider.ne("").fillna(False)
+    return valid_provider & provider.isin(consented_physicians)
 
 
 def load_prediction_window(paths, date_col, start_date, end_date):

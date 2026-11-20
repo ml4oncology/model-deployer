@@ -2,6 +2,7 @@
 """Run the weekly, monthly, and dashboard monitoring stages in sequence."""
 
 import argparse
+import math
 import sys
 from datetime import date
 from pathlib import Path
@@ -31,8 +32,10 @@ def run_pipeline(
     output_dir,
     info_dir,
     dashboard_output_dir,
+    consented_physician_file,
     max_alerts,
     dry_run=False,
+    image_scale=1.0,
 ):
     run_date = to_date(run_date)
 
@@ -42,6 +45,7 @@ def run_pipeline(
         run_date=run_date,
         anchor=anchor,
         output_dir=output_dir,
+        consented_physician_file=consented_physician_file,
         dry_run=dry_run,
     )
 
@@ -72,8 +76,10 @@ def run_pipeline(
         run_date=run_date,
         weekly_dir=weekly_dir,
         monthly_dir=monthly_dir,
+        consented_physician_file=consented_physician_file,
         anchor=anchor,
         output_dir=dashboard_output_dir,
+        image_scale=image_scale,
     )
     if not output_paths:
         raise MonitoringPipelineError("Dashboard metadata gates blocked generation; no images produced.")
@@ -83,9 +89,9 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Run all live monitoring stages in sequence.")
     parser.add_argument(
         "--deployment-start-date",
-        required=True,
         type=argparse_date,
         help="Live deployment monitoring start date (YYYYMMDD).",
+        default="20260826",
     )
     parser.add_argument(
         "--run-date",
@@ -97,19 +103,33 @@ def parse_args(argv=None):
     parser.add_argument("--data-dir", default="./Data")
     parser.add_argument("--output-dir", default="./Outputs")
     parser.add_argument("--info-dir", default="./Infos")
-    parser.add_argument("--dashboard-output-dir", default="./Outputs")
+    parser.add_argument("--dashboard-output-dir", default="./Outputs/monitoring_dashboard")
+    parser.add_argument(
+        "--consented-physician-file",
+        required=True,
+        help="CSV containing consented EpicProvider values.",
+    )
     parser.add_argument(
         "--max-alerts",
-        required=True,
         type=int,
         help="Cumulative alert target for the weekly dashboard.",
+        default=1157,
+    )
+    parser.add_argument(
+        "--image-scale",
+        type=float,
+        default=1.0,
+        help="Multiplier for rendered image dimensions (e.g. 1.5 or 2).",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print planned weekly/monthly work without writing files; skip dashboard generation.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not math.isfinite(args.image_scale) or args.image_scale <= 0:
+        parser.error("--image-scale must be a positive finite number")
+    return args
 
 
 def main(argv=None):
@@ -124,8 +144,10 @@ def main(argv=None):
             output_dir=args.output_dir,
             info_dir=args.info_dir,
             dashboard_output_dir=args.dashboard_output_dir,
+            consented_physician_file=args.consented_physician_file,
             max_alerts=args.max_alerts,
             dry_run=args.dry_run,
+            image_scale=args.image_scale,
         )
     except (MonitoringPipelineError, FileNotFoundError, ValueError, KeyError, OSError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)

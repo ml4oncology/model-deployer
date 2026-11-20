@@ -23,9 +23,12 @@ from deployer.monitoring.monitoring_common import (
     argparse_date,
     atomic_write_csv,
     atomic_write_text,
+    consented_provider_mask,
+    daily_prediction_path,
     discover_prediction_files,
     friday_on_or_after,
     last_eligible_friday,
+    load_consented_physicians,
     load_prediction_window,
     metadata_text,
     print_files,
@@ -393,7 +396,7 @@ def _discover_missingness_files(output_dir, anchor, start_date, end_date):
             found.append((file_date, path))
 
     found.sort(key=lambda item: item[0])
-    return [path for _, path in found]
+    return found
 
 
 def _read_metadata(path):
@@ -501,8 +504,8 @@ def _with_week_ending(df, date_col):
     return table
 
 
-def _alerts_from_prediction_frame(df, first_week_ending, last_week_ending, date_col):
-    alerts = df[df[COHORT_COLUMN] == COHORT_VALUE].copy()
+def _alerts_from_prediction_frame(df, consented_physicians, first_week_ending, last_week_ending, date_col):
+    alerts = df.loc[(df[COHORT_COLUMN] == COHORT_VALUE) & consented_provider_mask(df, consented_physicians)].copy()
     alerts = _with_week_ending(alerts, date_col)
 
     if alerts.empty:
@@ -526,8 +529,8 @@ def _regimen_prefixes(series):
     return series.astype("string").str.strip().str[:REGIMEN_PREFIX_LENGTH].fillna("")
 
 
-def _risk_scores_from_prediction_frame(df, first_week_ending, last_week_ending, date_col):
-    scores = df[df[COHORT_COLUMN] == COHORT_VALUE].copy()
+def _risk_scores_from_prediction_frame(df, consented_physicians, first_week_ending, last_week_ending, date_col):
+    scores = df.loc[(df[COHORT_COLUMN] == COHORT_VALUE) & consented_provider_mask(df, consented_physicians)].copy()
     scores = _with_week_ending(scores, date_col)
 
     missing_columns = [col for col in (SCORE_COLUMN, REGIMEN_COLUMN) if col not in scores.columns]
@@ -585,28 +588,59 @@ def _parse_missingness_flags(series, column, path):
     return parsed.astype(bool)
 
 
-def _load_missingness_window(paths, date_col, start_date, end_date):
+def _read_daily_missingness_pair(missingness_path, output_path, date_col, consented_physicians):
+    missingness_path = Path(missingness_path)
+    output_path = Path(output_path)
+    if not output_path.exists():
+        raise MonitoringPipelineError(f"Missing daily output file for weekly missingness: {output_path}")
+
+    try:
+        missingness_df = pd.read_csv(missingness_path)
+        output_df = pd.read_csv(output_path)
+    except (FileNotFoundError, pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
+        raise MonitoringPipelineError(
+            f"Unable to read daily missingness/output pair {missingness_path}, {output_path}: {exc}"
+        ) from exc
+
+    if "idx" in missingness_df.columns:
+        missingness_df = missingness_df.drop(columns=["idx"])
+    missingness_columns = [col for col in (date_col, COHORT_COLUMN) if col not in missingness_df.columns]
+    if missingness_columns:
+        raise MonitoringPipelineError(
+            f"Missing required missingness column(s) {missingness_columns}: {missingness_path}"
+        )
+    output_columns = [col for col in (COHORT_COLUMN, CLINICIAN_COLUMN) if col not in output_df.columns]
+    if output_columns:
+        raise MonitoringPipelineError(f"Missing required weekly output column(s): {output_columns}: {output_path}")
+    if len(missingness_df) != len(output_df):
+        raise MonitoringPipelineError(
+            "Daily missingness/output row count mismatch for weekly missingness: "
+            f"{missingness_path} ({len(missingness_df)}) vs "
+            f"{output_path} ({len(output_df)})"
+        )
+
+    first_trt = pd.to_numeric(output_df[COHORT_COLUMN], errors="coerce").fillna(0).eq(1).to_numpy()
+    consented = consented_provider_mask(output_df, consented_physicians).to_numpy()
+    return missingness_df.loc[first_trt & consented].reset_index(drop=True)
+
+
+def _load_missingness_window(pairs, anchor, output_dir, date_col, start_date, end_date, consented_physicians):
     frames = []
     feature_columns = set()
 
-    for path in paths:
-        try:
-            df = pd.read_csv(path)
-        except (FileNotFoundError, pd.errors.EmptyDataError, pd.errors.ParserError) as exc:
-            raise MonitoringPipelineError(f"Unable to load missingness file {path}: {exc}") from exc
-
-        required = [date_col, COHORT_COLUMN]
-        missing = [col for col in required if col not in df.columns]
-        if missing:
-            raise MonitoringPipelineError(f"Missing required missingness column(s) {missing}: {path}")
+    for file_date, missingness_path in pairs:
+        output_path = daily_prediction_path(output_dir, file_date, anchor)
+        df = _read_daily_missingness_pair(missingness_path, output_path, date_col, consented_physicians)
 
         file_features = _missingness_feature_columns(df.columns)
         if not file_features:
-            raise MonitoringPipelineError(f"No {MISSINGNESS_SUFFIX!r} columns found in missingness file: {path}")
+            raise MonitoringPipelineError(
+                f"No {MISSINGNESS_SUFFIX!r} columns found in missingness file: {missingness_path}"
+            )
 
         feature_columns.update(file_features)
         for column in file_features:
-            df[column] = _parse_missingness_flags(df[column], column, path)
+            df[column] = _parse_missingness_flags(df[column], column, missingness_path)
         frames.append(df[[date_col, COHORT_COLUMN, *file_features]])
 
     combined = pd.concat(frames, ignore_index=True)
@@ -661,6 +695,7 @@ def _build_missingness_table(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     window_start = week_window_start(first_week_ending, deployment_start_date)
@@ -675,7 +710,7 @@ def _build_missingness_table(
         f"weeks={first_week_ending.isoformat()}..{last_week_ending.isoformat()} "
         f"daily_files={len(files)}"
     )
-    print_files(files)
+    print_files([path for _, path in files])
 
     if not files:
         print(
@@ -687,7 +722,15 @@ def _build_missingness_table(
     if dry_run:
         return None
 
-    df, _ = _load_missingness_window(files, date_col, window_start, last_week_ending)
+    df, _ = _load_missingness_window(
+        files,
+        anchor,
+        output_dir,
+        date_col,
+        window_start,
+        last_week_ending,
+        consented_physicians,
+    )
     return _missingness_from_missingness_frame(df, first_week_ending, last_week_ending, date_col)
 
 
@@ -698,6 +741,7 @@ def _build_alerts_table(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     window_start = week_window_start(first_week_ending, deployment_start_date)
@@ -733,7 +777,7 @@ def _build_alerts_table(
     if missing:
         raise MonitoringPipelineError(f"Missing required weekly alert column(s): {missing}")
 
-    return _alerts_from_prediction_frame(df, first_week_ending, last_week_ending, date_col)
+    return _alerts_from_prediction_frame(df, consented_physicians, first_week_ending, last_week_ending, date_col)
 
 
 def _build_risk_scores_table(
@@ -743,6 +787,7 @@ def _build_risk_scores_table(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     window_start = week_window_start(first_week_ending, deployment_start_date)
@@ -778,7 +823,7 @@ def _build_risk_scores_table(
     if missing:
         raise MonitoringPipelineError(f"Missing required weekly risk score column(s): {missing}")
 
-    return _risk_scores_from_prediction_frame(df, first_week_ending, last_week_ending, date_col)
+    return _risk_scores_from_prediction_frame(df, consented_physicians, first_week_ending, last_week_ending, date_col)
 
 
 def _read_alerts_csv(path):
@@ -1257,6 +1302,7 @@ def _create_weekly_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     first_week_ending = first_friday_on_or_after(deployment_start_date)
@@ -1278,6 +1324,7 @@ def _create_weekly_baseline(
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
     if table is None:
@@ -1300,6 +1347,7 @@ def _update_weekly_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     last_week_ending = last_eligible_friday(run_date)
@@ -1316,6 +1364,7 @@ def _update_weekly_baseline(
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
     if new_table is None:
@@ -1352,6 +1401,7 @@ def _run_weekly_aggregate(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     csv_path, metadata_path = spec["paths"](output_dir, anchor)[:2]
@@ -1364,6 +1414,7 @@ def _run_weekly_aggregate(
         "date_col": date_col,
         "csv_path": csv_path,
         "metadata_path": metadata_path,
+        "consented_physicians": consented_physicians,
         "dry_run": dry_run,
     }
 
@@ -1393,6 +1444,7 @@ def _run_weekly_aggregate(
         date_col=date_col,
         csv_path=csv_path,
         metadata_path=metadata_path,
+        consented_physicians=consented_physicians,
         dry_run=dry_run,
     )
 
@@ -1460,6 +1512,7 @@ def _create_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     _create_weekly_baseline(
@@ -1471,6 +1524,7 @@ def _create_baseline(
         date_col,
         csv_path,
         metadata_path,
+        consented_physicians,
         dry_run,
     )
 
@@ -1483,6 +1537,7 @@ def _update_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     _update_weekly_baseline(
@@ -1494,6 +1549,7 @@ def _update_baseline(
         date_col,
         csv_path,
         metadata_path,
+        consented_physicians,
         dry_run,
     )
 
@@ -1506,6 +1562,7 @@ def _create_risk_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     _create_weekly_baseline(
@@ -1517,6 +1574,7 @@ def _create_risk_baseline(
         date_col,
         csv_path,
         metadata_path,
+        consented_physicians,
         dry_run,
     )
 
@@ -1529,6 +1587,7 @@ def _update_risk_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     _update_weekly_baseline(
@@ -1540,6 +1599,7 @@ def _update_risk_baseline(
         date_col,
         csv_path,
         metadata_path,
+        consented_physicians,
         dry_run,
     )
 
@@ -1552,6 +1612,7 @@ def _create_missingness_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     _create_weekly_baseline(
@@ -1563,6 +1624,7 @@ def _create_missingness_baseline(
         date_col,
         csv_path,
         metadata_path,
+        consented_physicians,
         dry_run,
     )
 
@@ -1575,6 +1637,7 @@ def _update_missingness_baseline(
     date_col,
     csv_path,
     metadata_path,
+    consented_physicians,
     dry_run,
 ):
     _update_weekly_baseline(
@@ -1586,6 +1649,7 @@ def _update_missingness_baseline(
         date_col,
         csv_path,
         metadata_path,
+        consented_physicians,
         dry_run,
     )
 
@@ -1596,6 +1660,7 @@ def _run_alerts_aggregate(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     _run_weekly_aggregate(
@@ -1605,6 +1670,7 @@ def _run_alerts_aggregate(
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
 
@@ -1615,6 +1681,7 @@ def _run_risk_scores_aggregate(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     _run_weekly_aggregate(
@@ -1624,6 +1691,7 @@ def _run_risk_scores_aggregate(
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
 
@@ -1634,6 +1702,7 @@ def _run_missingness_aggregate(
     anchor,
     output_dir,
     date_col,
+    consented_physicians,
     dry_run,
 ):
     _run_weekly_aggregate(
@@ -1643,14 +1712,16 @@ def _run_missingness_aggregate(
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
 
 
-def _run_once(deployment_start_date, run_date, anchor, output_dir, dry_run):
+def _run_once(deployment_start_date, run_date, anchor, output_dir, consented_physician_file, dry_run):
     if anchor not in ("clinic", "treatment"):
         raise MonitoringPipelineError(f"Unsupported anchor: {anchor!r}")
 
+    consented_physicians = None if dry_run else load_consented_physicians(consented_physician_file)
     date_col = {"clinic": "clinic_date", "treatment": "treatment_date"}[anchor]
     last_week_ending = last_eligible_friday(run_date)
     first_week_ending = first_friday_on_or_after(deployment_start_date)
@@ -1685,6 +1756,7 @@ def _run_once(deployment_start_date, run_date, anchor, output_dir, dry_run):
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
     _run_risk_scores_aggregate(
@@ -1693,6 +1765,7 @@ def _run_once(deployment_start_date, run_date, anchor, output_dir, dry_run):
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
     _run_missingness_aggregate(
@@ -1701,6 +1774,7 @@ def _run_once(deployment_start_date, run_date, anchor, output_dir, dry_run):
         anchor,
         output_dir,
         date_col,
+        consented_physicians,
         dry_run,
     )
     weekly_psi_monitoring.run_aggregate(
@@ -1708,6 +1782,7 @@ def _run_once(deployment_start_date, run_date, anchor, output_dir, dry_run):
         run_date,
         anchor,
         output_dir,
+        consented_physicians,
         dry_run,
     )
 
@@ -1720,6 +1795,7 @@ def run_pipeline(
     run_date,
     anchor,
     output_dir,
+    consented_physician_file,
     dry_run=False,
 ):
     deployment_start_date = to_date(deployment_start_date)
@@ -1733,6 +1809,7 @@ def run_pipeline(
         run_date=run_date,
         anchor=anchor,
         output_dir=output_dir,
+        consented_physician_file=consented_physician_file,
     )
 
 
@@ -1757,6 +1834,11 @@ def parse_args(argv=None):
     )
     parser.add_argument("--output-dir", default="./Outputs")
     parser.add_argument(
+        "--consented-physician-file",
+        required=True,
+        help="CSV containing consented EpicProvider values.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print discovery and planned work without writing files.",
@@ -1773,6 +1855,7 @@ def main(argv=None):
             run_date=run_date,
             anchor=args.model_anchor,
             output_dir=args.output_dir,
+            consented_physician_file=args.consented_physician_file,
             dry_run=args.dry_run,
         )
     except MonitoringPipelineError as exc:

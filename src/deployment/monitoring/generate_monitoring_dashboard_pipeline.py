@@ -6,6 +6,7 @@ import json
 import sys
 import textwrap
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 
 import matplotlib
@@ -13,7 +14,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from deployer.evaluation import DATE_COL_MAP
-from deployer.monitoring.monitoring_common import MonitoringPipelineError, argparse_date, to_date
+from deployer.monitoring.monitoring_common import (
+    MonitoringPipelineError,
+    argparse_date,
+    consented_provider_mask,
+    last_eligible_friday,
+    load_consented_physicians,
+    to_date,
+)
 from deployer.monitoring.subgroup_metrics import CATEGORY_REGISTRY, compute_category_metrics, compute_subgroup_metrics
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch
@@ -75,6 +83,17 @@ plt.rcParams.update(
 
 def figure(height):
     return plt.figure(figsize=(W, height), facecolor=BG)
+
+
+def render_figure(fig, scale=1.0):
+    buffer = BytesIO()
+    fig.savefig(buffer, format="PNG", dpi=DPI * scale, facecolor=BG)
+    plt.close(fig)
+    buffer.seek(0)
+    image = Image.open(buffer).convert("RGB")
+    image.load()
+    buffer.close()
+    return image
 
 
 def card(fig, x, y, w, h, color=WHITE, edge=EDGE, r=0.018):
@@ -179,7 +198,7 @@ def psi_plot(fig, region, vals):
 
 # ---------------------------------------------------------------------------
 # Inputs, paths, and metadata gate: proceed only when all weekly metadata
-# files share the same update date and that date is on or before the run date.
+# files share the same update date.
 # ---------------------------------------------------------------------------
 
 
@@ -210,7 +229,7 @@ def metadata_date(path):
     return datetime.fromisoformat(value).date()
 
 
-def metadata_gate_passes(paths, run_date):
+def metadata_gate_passes(paths):
     metadata_keys = ("alerts_metadata", "risk_metadata", "missingness_metadata", "psi_metadata")
     dates = [(key, metadata_date(paths[key])) for key in metadata_keys]
     unique_dates = {date for _, date in dates}
@@ -218,21 +237,12 @@ def metadata_gate_passes(paths, run_date):
         details = ", ".join(f"{Path(paths[key]).name}={date.isoformat()}" for key, date in dates)
         print(f"[INFO] Dashboard not generated: weekly metadata dates differ ({details})")
         return False
-
-    metadata_run_date = next(iter(unique_dates))
-    if metadata_run_date > run_date:
-        print(
-            f"[INFO] Dashboard not generated: metadata date {metadata_run_date.isoformat()} "
-            f"is after run date {run_date.isoformat()}"
-        )
-        return False
     return True
 
 
 # ---------------------------------------------------------------------------
-# Monthly paths and gate: the monthly CSV must have metadata updated on or
-# before the run date; the reported month is the latest available month that
-# starts before the run-date month.
+# Monthly paths and reporting window: the reported month is the latest
+# available month that starts before the run-date month.
 # ---------------------------------------------------------------------------
 
 
@@ -240,19 +250,7 @@ def monthly_paths(monthly_dir, anchor):
     interim = Path(monthly_dir)
     return {
         "monthly_labels": interim / f"monthly_monitoring_{anchor}_pred_w_ED_labels.csv",
-        "monthly_metadata": interim / f"monthly_monitoring_{anchor}_pred_w_ED_labels_metadata.json",
     }
-
-
-def monthly_metadata_gate_passes(metadata_path, run_date):
-    updated_date = metadata_date(metadata_path)
-    if updated_date > run_date:
-        print(
-            f"[INFO] Dashboard not generated: monthly metadata date {updated_date.isoformat()} "
-            f"is after run date {run_date.isoformat()}"
-        )
-        return False
-    return True
 
 
 def available_month_window(df, date_col, run_date):
@@ -268,9 +266,31 @@ def available_month_window(df, date_col, run_date):
 
 
 # ---------------------------------------------------------------------------
-# Weekly data loading: report-week values come from the last week ending,
-# while cumulative values use all available weeks up to that week.
+# Weekly data loading: the report week is the prior week ending when available,
+# otherwise the latest week ending present in all weekly result files;
+# cumulative values use all available weeks up to that week.
 # ---------------------------------------------------------------------------
+
+WEEKLY_REPORTING_KEYS = ("alerts", "risk_scores", "missingness", "psi_scores")
+
+
+def weekly_report_week(paths, run_date):
+    expected = pd.Timestamp(last_eligible_friday(run_date))
+    available = None
+    for key in WEEKLY_REPORTING_KEYS:
+        frame = pd.read_csv(paths[key], usecols=["week_ending"])
+        weeks = set(pd.to_datetime(frame["week_ending"], errors="coerce").dropna().dt.normalize())
+        eligible = {week for week in weeks if week <= expected}
+        if not eligible:
+            raise MonitoringPipelineError(
+                f"No weekly results available on or before {expected:%b %d, %Y} in {Path(paths[key]).name}."
+            )
+        available = eligible if available is None else available & eligible
+        if not available:
+            raise MonitoringPipelineError(
+                f"No weekly results are available in all weekly files on or before {expected:%b %d, %Y}."
+            )
+    return expected if expected in available else max(available)
 
 
 def display_feature(name):
@@ -316,8 +336,7 @@ def load_weekly_data(paths, report_week):
     alerts = alerts.loc[alerts["week_ending"] <= report_timestamp].sort_values("week_ending")
     clinician_columns = [column for column in alerts.columns if column != "week_ending"]
     alert_totals = alerts[clinician_columns].sum(axis=1).to_numpy(dtype=float)
-    report_alerts = alerts.loc[alerts["week_ending"] == report_timestamp]
-    report_alert_row = report_alerts.iloc[0] if not report_alerts.empty else alerts.iloc[-1]
+    report_alert_row = alerts.loc[alerts["week_ending"] == report_timestamp].iloc[0]
     clinician_cumulative = alerts[clinician_columns].sum().sort_values(ascending=False)
     top_clinicians = clinician_cumulative.head(15).index.tolist()
 
@@ -327,11 +346,6 @@ def load_weekly_data(paths, report_week):
         risk_scores["week_ending"] == report_timestamp,
         "ed_pred_prob",
     ]
-    if weekly_risk_rows.empty:
-        weekly_risk_rows = risk_scores.loc[
-            risk_scores["week_ending"] == risk_scores["week_ending"].max(),
-            "ed_pred_prob",
-        ]
     weekly_scores = pd.to_numeric(weekly_risk_rows, errors="coerce").dropna().to_numpy(dtype=float)
     cumulative_scores = pd.to_numeric(risk_scores["ed_pred_prob"], errors="coerce").dropna().to_numpy(dtype=float)
     silent_scores = (
@@ -346,8 +360,7 @@ def load_weekly_data(paths, report_week):
     missingness = with_datetime_week(pd.read_csv(paths["missingness"]))
     missingness = missingness.loc[missingness["week_ending"] <= report_timestamp]
     feature_columns = [column for column in missingness.columns if column not in ("week_ending", "encounter_count")]
-    report_missing = missingness.loc[missingness["week_ending"] == report_timestamp]
-    report_missing_row = report_missing.iloc[0] if not report_missing.empty else missingness.iloc[-1]
+    report_missing_row = missingness.loc[missingness["week_ending"] == report_timestamp].iloc[0]
     weekly_encounters = float(report_missing_row["encounter_count"]) or 1.0
     cumulative_encounters = float(missingness["encounter_count"].sum()) or 1.0
 
@@ -365,7 +378,7 @@ def load_weekly_data(paths, report_week):
             strict=False,
         )
     )
-    top_features = sorted(feature_columns, key=lambda feature: weekly_missing_pct[feature], reverse=True)[:10]
+    top_features = sorted(feature_columns, key=lambda feature: cumulative_missing_pct[feature], reverse=True)[:10]
     missingness_rows = [
         (
             display_feature(feature),
@@ -379,13 +392,11 @@ def load_weekly_data(paths, report_week):
     psi_scores = with_datetime_week(pd.read_csv(paths["psi_scores"]))
     psi_scores = psi_scores.loc[psi_scores["week_ending"] <= report_timestamp]
     report_psi = psi_scores.loc[psi_scores["week_ending"] == report_timestamp].copy()
-    if report_psi.empty:
-        report_psi = psi_scores.loc[psi_scores["week_ending"] == psi_scores["week_ending"].max()].copy()
     psi_counts = pd.read_csv(paths["psi_counts"])
     feature_types = psi_counts.drop_duplicates("feature").set_index("feature")["feature_type"].to_dict()
     report_psi["feature_type"] = report_psi["feature"].map(feature_types)
     report_psi = report_psi.dropna(subset=["psi_week", "psi_cumulative"])
-    report_psi = report_psi.sort_values("psi_week", ascending=False).drop_duplicates("feature")
+    report_psi = report_psi.sort_values("psi_cumulative", ascending=False).drop_duplicates("feature")
 
     continuous = report_psi.loc[
         (report_psi["feature_type"] == "continuous") & (~report_psi["feature"].isin(EXCLUDED_CONTINUOUS_PSI_FEATURES))
@@ -421,15 +432,26 @@ def load_weekly_data(paths, report_week):
 
 
 # ---------------------------------------------------------------------------
-# Monthly metric preparation: filter to first-treatment rows first, use the
-# latest available pre-run-month cohort, and keep those rows as cumulative.
+# Monthly metric preparation: filter to consented first-treatment rows first,
+# use the latest available pre-run-month cohort, and cap cumulative rows at
+# the end of that cohort's month.
 # ---------------------------------------------------------------------------
 
 
-def load_monthly_data(paths, run_date, anchor):
+def load_monthly_data(paths, run_date, anchor, consented_physicians):
     date_col = DATE_COL_MAP[anchor]
     frame = pd.read_csv(paths["monthly_labels"], parse_dates=[date_col])
-    required = [date_col, "ed_pred_prob", "target_ED_30d", "first_trt", "cancer", "age", "gender", "intent"]
+    required = [
+        date_col,
+        "ed_pred_prob",
+        "target_ED_30d",
+        "first_trt",
+        "VISIT_PROVIDER_NAME",
+        "cancer",
+        "age",
+        "gender",
+        "intent",
+    ]
     missing = [column for column in required if column not in frame.columns]
     if missing:
         raise MonitoringPipelineError(f"Monthly labels file is missing required column(s): {missing}")
@@ -439,13 +461,17 @@ def load_monthly_data(paths, run_date, anchor):
     if frame.empty:
         raise MonitoringPipelineError("Monthly labels contain no first-treatment patients (first_trt == 1).")
 
+    frame = frame.loc[consented_provider_mask(frame, consented_physicians)].copy()
+    if frame.empty:
+        raise MonitoringPipelineError("Monthly labels contain no first-treatment patients with a consented physician.")
+
     month_start, month_end_exclusive = available_month_window(frame, date_col, run_date)
     monthly = frame.loc[(frame[date_col] >= month_start) & (frame[date_col] < month_end_exclusive)].copy()
     if monthly.empty:
         raise MonitoringPipelineError(f"No monthly rows found for {month_start:%b %Y} in column '{date_col}'.")
 
     return {
-        "all": frame,
+        "all": frame.loc[frame[date_col] < month_end_exclusive].copy(),
         "monthly": monthly,
         "month_start": month_start,
         "date_col": date_col,
@@ -461,7 +487,6 @@ def compute_overall_metrics(frame):
         score_col="ed_pred_prob",
         subgroup_col="_overall",
         n_boot=MONTHLY_N_BOOT,
-        min_n=1,
         random_state=MONTHLY_RANDOM_STATE,
     ).iloc[0]
 
@@ -508,7 +533,7 @@ def metric_row(frame, subgroup):
 # ---------------------------------------------------------------------------
 
 
-def draw_prediction_space(data, report_week, max_alerts, output_dir):
+def draw_prediction_space(data, report_week, max_alerts, scale=1.0):
     fig = figure(13.7)
     header(
         fig,
@@ -531,7 +556,7 @@ def draw_prediction_space(data, report_week, max_alerts, output_dir):
         fig,
         0.045,
         0.784,
-        "Weekly count (left axis)  ·  Cumulative count and target (right axis)",
+        "Weekly count (left axis)  ·  Cumulative count (right axis)",
         8.1,
         color=MUTED,
     )
@@ -563,29 +588,25 @@ def draw_prediction_space(data, report_week, max_alerts, output_dir):
     ax2.set_zorder(4)
     ax2.patch.set_visible(False)
     ax2.plot(weeks, cumulative, "s-", color=ORANGE, lw=2, ms=3.7, zorder=4)
-    ax2.axhline(max_alerts, color=ORANGE, lw=1.9, ls="--", alpha=0.86, zorder=3)
-    right_upper = max(float(max_alerts), float(cumulative.max())) * 1.07 or 1.0
+    right_upper = float(cumulative.max()) * 1.07 or 1.0
     ax2.set_ylim(max(0, float(cumulative.min()) * 0.94), right_upper)
     ax2.locator_params(axis="y", nbins=4)
     ax2.tick_params(axis="y", labelsize=8, labelcolor=ORANGE, length=0)
-    ax2.set_ylabel("Cumulative alerts", fontsize=8.1, color=ORANGE)
+    ax2.set_ylabel(
+        f"Cumulative alerts\nTarget: {max_alerts:,}",
+        fontsize=8.1,
+        color=ORANGE,
+        labelpad=10,
+    )
     ax2.spines["top"].set_visible(False)
     fig.legend(
         handles=[
             Line2D([0], [0], color=BLUE, lw=2, marker="o", ms=4, label="Weekly"),
             Line2D([0], [0], color=ORANGE, lw=2, marker="s", ms=3.5, label="Cumulative"),
-            Line2D(
-                [0],
-                [0],
-                color=ORANGE,
-                lw=1.9,
-                ls="--",
-                label=f"Cumulative target ({max_alerts:,})",
-            ),
         ],
         loc="center right",
         bbox_to_anchor=(0.961, 0.805),
-        ncol=3,
+        ncol=2,
         frameon=False,
         fontsize=8.0,
     )
@@ -698,10 +719,7 @@ def draw_prediction_space(data, report_week, max_alerts, output_dir):
         fontsize=7.9,
     )
 
-    path = Path(output_dir) / "01_prediction_space.png"
-    fig.savefig(path, dpi=DPI, facecolor=BG)
-    plt.close(fig)
-    return path
+    return render_figure(fig, scale)
 
 
 # ---------------------------------------------------------------------------
@@ -709,7 +727,7 @@ def draw_prediction_space(data, report_week, max_alerts, output_dir):
 # ---------------------------------------------------------------------------
 
 
-def draw_input_space(data, output_dir):
+def draw_input_space(data, scale=1.0):
     fig = figure(9.6)
     header(
         fig,
@@ -719,7 +737,7 @@ def draw_input_space(data, output_dir):
     )
     card(fig, 0.025, 0.506, 0.95, 0.383)
     txt(fig, 0.046, 0.859, "Feature-level missingness", 12.1, "bold")
-    txt(fig, 0.046, 0.836, "Top 10 of ~50 input features by missingness this week", 8.5, color=MUTED)
+    txt(fig, 0.046, 0.836, "Top 10 of ~50 input features by cumulative missingness", 8.5, color=MUTED)
 
     missingness = data["missingness"]
     y = np.arange(len(missingness))[::-1]
@@ -810,8 +828,8 @@ def draw_input_space(data, output_dir):
         8.1,
         color=MUTED,
     )
-    txt(fig, 0.052, 0.401, "Top 5 continuous", 9.4, "bold")
-    txt(fig, 0.544, 0.401, "Top 5 categorical/binary", 9.4, "bold")
+    txt(fig, 0.052, 0.401, "Top 5 continuous by cumulative PSI", 9.4, "bold")
+    txt(fig, 0.544, 0.401, "Top 5 categorical/binary by cumulative PSI", 9.4, "bold")
     psi_plot(fig, [0.17, 0.123, 0.262, 0.245], data["psi_continuous"])
     psi_plot(fig, [0.668, 0.123, 0.258, 0.245], data["psi_categorical"])
     fig.legend(
@@ -845,10 +863,7 @@ def draw_input_space(data, output_dir):
         color=MUTED,
     )
 
-    path = Path(output_dir) / "02_input_space.png"
-    fig.savefig(path, dpi=DPI, facecolor=BG)
-    plt.close(fig)
-    return path
+    return render_figure(fig, scale)
 
 
 # ---------------------------------------------------------------------------
@@ -932,7 +947,6 @@ def draw_forest(fig, region, category_pairs, kind, show_left, separators=None, w
     ypos = np.arange(len(groups))[::-1]
     limits = {"event": (0, 0.50), "auc": (0, 1.0), "brier": (0, 0.40)}
     lower, upper = limits[kind]
-    clamp_margin = 0.01 * (upper - lower)
     ax.set_xlim(lower, upper)
     ax.set_ylim(-0.58, len(groups) - 0.42)
     ax.grid(axis="x", color=GRID, lw=0.7)
@@ -940,7 +954,7 @@ def draw_forest(fig, region, category_pairs, kind, show_left, separators=None, w
         ax.axvline(0.5, ls=":", lw=1.2, color="#ADB7C3", zorder=1)
 
     def clip(value):
-        return min(max(float(value), lower + clamp_margin), upper - clamp_margin)
+        return min(max(float(value), lower), upper)
 
     for i, (_, monthly, cumulative) in enumerate(groups):
         y = ypos[i]
@@ -954,22 +968,23 @@ def draw_forest(fig, region, category_pairs, kind, show_left, separators=None, w
             high = values["high"]
             value = values["value"]
             if np.isfinite(low) and np.isfinite(high):
-                ax.plot(
-                    [clip(low), clip(high)],
-                    [y + offset, y + offset],
-                    color=color,
-                    lw=1.45,
-                    zorder=3,
-                    solid_capstyle="round",
-                )
-                ax.plot([clip(low)] * 2, [y + offset - 0.075, y + offset + 0.075], color=color, lw=1.1, zorder=3)
-                ax.plot(
-                    [clip(high)] * 2,
-                    [y + offset - 0.075, y + offset + 0.075],
-                    color=color,
-                    lw=1.1,
-                    zorder=3,
-                )
+                if low != high:
+                    ax.plot(
+                        [clip(low), clip(high)],
+                        [y + offset, y + offset],
+                        color=color,
+                        lw=1.45,
+                        zorder=3,
+                        solid_capstyle="round",
+                    )
+                    ax.plot([clip(low)] * 2, [y + offset - 0.075, y + offset + 0.075], color=color, lw=1.1, zorder=3)
+                    ax.plot(
+                        [clip(high)] * 2,
+                        [y + offset - 0.075, y + offset + 0.075],
+                        color=color,
+                        lw=1.1,
+                        zorder=3,
+                    )
                 if low < lower:
                     ax.annotate(
                         f"<{lower:.2f}",
@@ -981,6 +996,7 @@ def draw_forest(fig, region, category_pairs, kind, show_left, separators=None, w
                         fontsize=6.5,
                         color=MUTED,
                         zorder=6,
+                        annotation_clip=False,
                     )
                 if high > upper:
                     ax.annotate(
@@ -993,9 +1009,35 @@ def draw_forest(fig, region, category_pairs, kind, show_left, separators=None, w
                         fontsize=6.5,
                         color=MUTED,
                         zorder=6,
+                        annotation_clip=False,
                     )
-            point_marker = "<" if value < lower else ">" if value > upper else marker
-            ax.scatter([clip(value)], [y + offset], color=color, s=22, marker=point_marker, zorder=5)
+            at_lower = value < lower
+            at_upper = value > upper
+            point_marker = "<" if at_lower else ">" if at_upper else marker
+            ax.scatter(
+                [clip(value)],
+                [y + offset],
+                color=color,
+                edgecolors=WHITE,
+                linewidths=0.8,
+                s=30,
+                marker=point_marker,
+                zorder=5,
+                clip_on=False,
+            )
+            numeric_xytext = (5, -12 if offset > 0 else 12) if at_lower or at_upper else (5, 6 if offset > 0 else -8)
+            ax.annotate(
+                format_metric(value, kind),
+                (clip(value), y + offset),
+                xytext=numeric_xytext,
+                textcoords="offset points",
+                ha="left",
+                va="bottom" if offset > 0 else "top",
+                fontsize=6.3,
+                color=color,
+                zorder=7,
+                annotation_clip=False,
+            )
 
     if separators:
         for separator in separators:
@@ -1039,7 +1081,7 @@ def monthly_header(fig, run_date, month_label, cumulative_label):
     )
 
 
-def draw_monthly_clinical_subgroups(data, run_date, output_dir):
+def draw_monthly_clinical_subgroups(data, run_date, scale=1.0):
     fig = figure(9.3)
     monthly_header(fig, run_date, data["month_label"], "Cumulative: all first-treatment patients")
     monthly_overall = compute_overall_metrics(data["monthly"])
@@ -1101,13 +1143,10 @@ def draw_monthly_clinical_subgroups(data, run_date, output_dir):
         frameon=False,
         fontsize=8.6,
     )
-    path = Path(output_dir) / "03_outcomes_clinical_subgroups.png"
-    fig.savefig(path, dpi=DPI, facecolor=BG)
-    plt.close(fig)
-    return path
+    return render_figure(fig, scale)
 
 
-def draw_monthly_cancer_groups(data, run_date, output_dir):
+def draw_monthly_cancer_groups(data, run_date, scale=1.0):
     fig = figure(7.45)
     header(
         fig,
@@ -1137,21 +1176,17 @@ def draw_monthly_cancer_groups(data, run_date, output_dir):
         frameon=False,
         fontsize=9,
     )
-    path = Path(output_dir) / "04_outcomes_cancer_groups.png"
-    fig.savefig(path, dpi=DPI, facecolor=BG)
-    plt.close(fig)
-    return path
+    return render_figure(fig, scale)
 
 
 # ---------------------------------------------------------------------------
-# Output combination: stitch the weekly PNGs into the weekly-only image and
-# all four sections into the full dashboard image.
+# Output combination: stitch the four rendered sections into the single full
+# dashboard image.
 # ---------------------------------------------------------------------------
 
 
-def combine_images(paths, output_dir, filename):
-    images = [Image.open(path).convert("RGB") for path in paths]
-    separator = 8
+def combine_images(images, output_dir, filename, scale=1.0):
+    separator = max(1, round(8 * scale))
     combined = Image.new(
         "RGB",
         (images[0].width, sum(image.height for image in images) + separator * (len(images) - 1)),
@@ -1166,51 +1201,47 @@ def combine_images(paths, output_dir, filename):
     return path
 
 
-def combine_weekly_images(paths, output_dir):
-    return combine_images(paths, output_dir, "ED_risk_monitoring_weekly_only.png")
-
-
 # ---------------------------------------------------------------------------
 # Pipeline entry point.
 # ---------------------------------------------------------------------------
 
 
-def run_pipeline(max_alerts, run_date, weekly_dir, monthly_dir, anchor, output_dir):
+def run_pipeline(
+    max_alerts,
+    run_date,
+    weekly_dir,
+    monthly_dir,
+    consented_physician_file,
+    anchor,
+    output_dir,
+    image_scale=1.0,
+):
+    run_date = to_date(run_date)
     weekly_input_paths = weekly_paths(weekly_dir, anchor)
     monthly_input_paths = monthly_paths(monthly_dir, anchor)
-    if not metadata_gate_passes(weekly_input_paths, run_date):
-        return []
-    if not monthly_metadata_gate_passes(monthly_input_paths["monthly_metadata"], run_date):
+    if not metadata_gate_passes(weekly_input_paths):
         return []
 
-    report_week = to_date(read_metadata_field(weekly_input_paths["alerts_metadata"], "last_week_ending"))
+    report_week = weekly_report_week(weekly_input_paths, run_date)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    consented_physicians = load_consented_physicians(consented_physician_file)
     weekly_data = load_weekly_data(weekly_input_paths, report_week)
-    monthly_data = load_monthly_data(monthly_input_paths, run_date, anchor)
-    weekly_section_paths = [
-        draw_prediction_space(weekly_data, report_week, max_alerts, output_dir),
-        draw_input_space(weekly_data, output_dir),
+    monthly_data = load_monthly_data(monthly_input_paths, run_date, anchor, consented_physicians)
+    sections = [
+        draw_prediction_space(weekly_data, report_week, max_alerts, scale=image_scale),
+        draw_input_space(weekly_data, scale=image_scale),
+        draw_monthly_clinical_subgroups(monthly_data, run_date, scale=image_scale),
+        draw_monthly_cancer_groups(monthly_data, run_date, scale=image_scale),
     ]
-    monthly_section_paths = [
-        draw_monthly_clinical_subgroups(monthly_data, run_date, output_dir),
-        draw_monthly_cancer_groups(monthly_data, run_date, output_dir),
-    ]
-    weekly_combined_path = combine_weekly_images(weekly_section_paths, output_dir)
     full_combined_path = combine_images(
-        [*weekly_section_paths, *monthly_section_paths],
+        sections,
         output_dir,
-        "ED_risk_monitoring_full.png",
+        f"ED_risk_monitoring_full_{run_date:%Y%m%d}.png",
+        scale=image_scale,
     )
-    output_paths = [
-        *weekly_section_paths,
-        weekly_combined_path,
-        *monthly_section_paths,
-        full_combined_path,
-    ]
-    for path in output_paths:
-        print(f"[INFO] Saved {path}")
-    return output_paths
+    print(f"[INFO] Saved {full_combined_path}")
+    return [full_combined_path]
 
 
 def parse_args(argv=None):
@@ -1221,9 +1252,24 @@ def parse_args(argv=None):
     parser.add_argument("--run-date", required=True, type=argparse_date, help="Metadata run date (YYYYMMDD).")
     parser.add_argument("--interim-weekly-dir", required=True, type=Path)
     parser.add_argument("--interim-monthly-dir", required=True, type=Path)
+    parser.add_argument(
+        "--consented-physician-file",
+        required=True,
+        type=Path,
+        help="CSV with EpicProvider and Enabled columns defining consented physicians.",
+    )
     parser.add_argument("--model-anchor", choices=("clinic", "treatment"), default="clinic")
     parser.add_argument("--output-dir", required=True, type=Path)
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--image-scale",
+        type=float,
+        default=1.0,
+        help="Multiplier for rendered image dimensions (e.g. 1.5 or 2).",
+    )
+    args = parser.parse_args(argv)
+    if not np.isfinite(args.image_scale) or args.image_scale <= 0:
+        parser.error("--image-scale must be a positive finite number")
+    return args
 
 
 def main(argv=None):
@@ -1234,8 +1280,10 @@ def main(argv=None):
             run_date=args.run_date,
             weekly_dir=args.interim_weekly_dir,
             monthly_dir=args.interim_monthly_dir,
+            consented_physician_file=args.consented_physician_file,
             anchor=args.model_anchor,
             output_dir=args.output_dir,
+            image_scale=args.image_scale,
         )
     except (MonitoringPipelineError, FileNotFoundError, ValueError, KeyError) as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)

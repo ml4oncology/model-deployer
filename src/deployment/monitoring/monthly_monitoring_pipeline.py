@@ -197,7 +197,9 @@ def _create_baseline(
     if end_date < deployment_start_date:
         raise MonitoringPipelineError(
             f"Derived end date {end_date.isoformat()} is before deployment start "
-            f"{deployment_start_date.isoformat()}"
+            f"{deployment_start_date.isoformat()}. Most recent eligible monthly pull: "
+            f"{pull.pull_date.isoformat()} ({DEFAULT_LOOKAHEAD_DAYS}-day lookahead). "
+            "Use a later run date or an earlier deployment start date."
         )
 
     files = discover_prediction_files(

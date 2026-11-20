@@ -163,11 +163,14 @@ def bootstrap_metrics_ci(y_true, y_score, n_boot=2000, ci=0.95, random_state=Non
     brier_lo, brier_hi = pct_ci(boot_briers)
     auc_lo, auc_hi = pct_ci(boot_aucs) if compute_auc else (np.nan, np.nan)
 
+    def clamp_auc(value):
+        return float(np.clip(value, 0.0, 1.0))
+
     return {
         "event_rate": point_event_rate,
-        "auc": point_auc,
-        "auc_ci_low": auc_lo,
-        "auc_ci_high": auc_hi,
+        "auc": clamp_auc(point_auc),
+        "auc_ci_low": clamp_auc(auc_lo),
+        "auc_ci_high": clamp_auc(auc_hi),
         "brier": point_brier,
         "brier_ci_low": brier_lo,
         "brier_ci_high": brier_hi,
@@ -186,7 +189,6 @@ def compute_subgroup_metrics(
     subgroup_col: str,
     n_boot: int = 2000,
     ci: float = 0.95,
-    min_n: int = 10,
     random_state: Optional[int] = None,
 ) -> pd.DataFrame:
     """Compute event rate, AUC, and Brier score (+ bootstrap CIs) per
@@ -199,7 +201,7 @@ def compute_subgroup_metrics(
         n_neg = n - n_pos
         event_rate_low, event_rate_high = wilson_interval(n_pos, n)
 
-        if n < min_n:
+        if n == 0:
             results.append(
                 {
                     "subgroup": subgroup_value,
@@ -214,7 +216,7 @@ def compute_subgroup_metrics(
                     "brier": np.nan,
                     "brier_ci_low": np.nan,
                     "brier_ci_high": np.nan,
-                    "skipped_reason": "insufficient data",
+                    "skipped_reason": "no labelled rows",
                 }
             )
             continue
@@ -254,7 +256,6 @@ def compute_category_metrics(
     score_col="ed_pred_prob",
     n_boot=2000,
     ci=0.95,
-    min_n=10,
     random_state=42,
 ):
     analysis_df = df.copy()
@@ -267,7 +268,6 @@ def compute_category_metrics(
         subgroup_col=subgroup_col,
         n_boot=n_boot,
         ci=ci,
-        min_n=min_n,
         random_state=random_state,
     )
 
@@ -278,7 +278,7 @@ def compute_category_metrics(
 
 
 def plot_subgroup_metrics(results: pd.DataFrame, category: CategoryConfig, output_dir: str, ci_pct: int, title_note=""):
-    plot_df = results[results["skipped_reason"] != "insufficient data"].copy()
+    plot_df = results[results["n"] > 0].copy()
     if plot_df.empty:
         print(f"[WARN] No valid subgroups to plot for category '{category.name}'. Skipping plot.")
         return None
@@ -382,7 +382,6 @@ def main():
     )
     parser.add_argument("--n-boot", type=int, default=2000, help="Number of bootstrap resamples per subgroup.")
     parser.add_argument("--ci", type=float, default=0.95, help="Confidence interval width, e.g. 0.95 for 95%%.")
-    parser.add_argument("--min-n", type=int, default=10, help="Minimum subgroup size required to compute metrics.")
     parser.add_argument("--random-state", type=int, default=42, help="Random seed for reproducible bootstrapping.")
     args = parser.parse_args()
 
@@ -428,7 +427,6 @@ def main():
             subgroup_col=subgroup_col,
             n_boot=args.n_boot,
             ci=args.ci,
-            min_n=args.min_n,
             random_state=args.random_state,
         )
 

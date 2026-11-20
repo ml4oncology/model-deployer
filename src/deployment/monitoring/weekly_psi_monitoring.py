@@ -12,6 +12,7 @@ from deployer.monitoring.monitoring_common import (
     MonitoringPipelineError,
     atomic_write_csv,
     atomic_write_text,
+    consented_provider_mask,
     daily_prediction_path,
     discover_daily_input_files,
     friday_on_or_after,
@@ -41,6 +42,7 @@ PSI_CATEGORICAL_GROUPS = {
     "intent": "intent_",
 }
 PSI_FEMALE_COLUMN = "female"
+PSI_PROVIDER_COLUMN = "VISIT_PROVIDER_NAME"
 PSI_SEX_FEATURE = "sex"
 PSI_MISSING_LABEL = "__missing__"
 PSI_OTHER_LABEL = "__other__"
@@ -997,7 +999,7 @@ def _count_feature(df, spec, bins_feature):
     raise MonitoringPipelineError(f"Unsupported PSI feature type: {spec.feature_type!r}")
 
 
-def _read_daily_pair(input_path, output_path):
+def _read_daily_pair(input_path, output_path, consented_physicians):
     input_path = Path(input_path)
     output_path = Path(output_path)
     if not output_path.exists():
@@ -1013,8 +1015,12 @@ def _read_daily_pair(input_path, output_path):
 
     if "idx" in input_df.columns:
         input_df = input_df.drop(columns=["idx"])
-    if "first_trt" not in output_df.columns:
-        raise MonitoringPipelineError(f"Daily output file is missing 'first_trt': {output_path}")
+    required_output_columns = ["first_trt", PSI_PROVIDER_COLUMN]
+    missing_output_columns = [column for column in required_output_columns if column not in output_df.columns]
+    if missing_output_columns:
+        raise MonitoringPipelineError(
+            f"Daily output file is missing required column(s) {missing_output_columns}: {output_path}"
+        )
     if len(input_df) != len(output_df):
         raise MonitoringPipelineError(
             "Daily input/output row count mismatch for PSI aggregation: "
@@ -1022,8 +1028,9 @@ def _read_daily_pair(input_path, output_path):
             f"{output_path} ({len(output_df)})"
         )
 
-    mask = pd.to_numeric(output_df["first_trt"], errors="coerce").fillna(0).eq(1).to_numpy()
-    return input_df.loc[mask].reset_index(drop=True)
+    first_trt = pd.to_numeric(output_df["first_trt"], errors="coerce").fillna(0).eq(1).to_numpy()
+    consented = consented_provider_mask(output_df, consented_physicians, column=PSI_PROVIDER_COLUMN).to_numpy()
+    return input_df.loc[first_trt & consented].reset_index(drop=True)
 
 
 def _build_counts_for_weeks(
@@ -1034,12 +1041,13 @@ def _build_counts_for_weeks(
     output_dir,
     reference_metadata,
     reference_bins,
+    consented_physicians,
     dry_run,
 ):
     window_start = week_window_start(
         start_week_ending,
         deployment_start_date,
-        lookback_days=6,
+        lookback_days=4,
     )
     files = discover_daily_input_files(
         output_dir,
@@ -1093,7 +1101,7 @@ def _build_counts_for_weeks(
         specs = specs_by_version[version.reference_version]
 
         output_path = daily_prediction_path(output_dir, file_date, anchor)
-        filtered = _read_daily_pair(input_path, output_path)
+        filtered = _read_daily_pair(input_path, output_path, consented_physicians)
         warned_extra = _validate_live_columns(
             filtered,
             specs,
@@ -1344,6 +1352,7 @@ def run_aggregate(
     run_date,
     anchor,
     output_dir,
+    consented_physicians,
     dry_run=False,
 ):
     deployment_start_date = to_date(deployment_start_date)
@@ -1403,6 +1412,7 @@ def run_aggregate(
                 output_dir,
                 reference_metadata,
                 reference_bins,
+                consented_physicians,
                 dry_run,
             )
             if new_counts is None:
@@ -1463,6 +1473,7 @@ def run_aggregate(
         output_dir,
         reference_metadata,
         reference_bins,
+        consented_physicians,
         dry_run,
     )
     if counts is None:
