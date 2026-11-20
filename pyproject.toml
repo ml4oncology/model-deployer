@@ -44,6 +44,7 @@ dev = [
 package-dir = {"deployer" = "src/deployment", "acu" = "src/training/acu"}
 packages = [
     "deployer",
+    "deployer.monitoring",
     "deployer.dashboard",
     "deployer.data_prep",
     "deployer.data_prep.preprocess",

@@ -16,34 +16,35 @@ import argparse
 import os
 import sys
 from dataclasses import dataclass
-from typing import Callable, Optional, List
+from typing import Callable, List, Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score, brier_score_loss
-import matplotlib.pyplot as plt
-
+from scipy.stats import norm
+from sklearn.metrics import brier_score_loss, roc_auc_score
 
 # ---------------------------------------------------------------------------
 # Category registry
 # ---------------------------------------------------------------------------
 
 CANCER_MAPPING = {
-    'hepatocellular': 'hepatobiliary',
-    'biliary': 'hepatobiliary',
+    "hepatocellular": "hepatobiliary",
+    "biliary": "hepatobiliary",
 }
 
 INTENT_MAPPING = {
-    'CURATIVE': 'NON-PALLIATIVE',
-    'NEOADJUVANT': 'NON-PALLIATIVE',
-    'ADJUVANT': 'NON-PALLIATIVE',
-    'PALLIATIVE': 'PALLIATIVE',
+    "CURATIVE": "NON-PALLIATIVE",
+    "NEOADJUVANT": "NON-PALLIATIVE",
+    "ADJUVANT": "NON-PALLIATIVE",
+    "PALLIATIVE": "PALLIATIVE",
 }
 
 FIRST_TRT_MAPPING = {
     1: "New treatment",
     0: "Continuing treatment",
 }
+
 
 @dataclass
 class CategoryConfig:
@@ -58,6 +59,7 @@ class CategoryConfig:
                   takes precedence over `mapping` (use this for things
                   like binning a continuous column, e.g. age > 65)
     """
+
     name: str
     column: str
     display_name: str
@@ -66,10 +68,7 @@ class CategoryConfig:
 
     def get_subgroup_labels(self, df: pd.DataFrame) -> pd.Series:
         if self.column not in df.columns:
-            raise KeyError(
-                f"Column '{self.column}' not found in input data "
-                f"(required for category '{self.name}')."
-            )
+            raise KeyError(f"Column '{self.column}' not found in input data (required for category '{self.name}').")
         series = df[self.column]
         if self.transform is not None:
             return self.transform(series)
@@ -84,12 +83,7 @@ class CategoryConfig:
 
 # Registered categories. Add new ones here as new columns become available.
 CATEGORY_REGISTRY: List[CategoryConfig] = [
-    CategoryConfig(
-        name="cancer_type",
-        column="cancer",
-        display_name="Cancer Type",
-        mapping=CANCER_MAPPING
-    ),
+    CategoryConfig(name="cancer_type", column="cancer", display_name="Cancer Type", mapping=CANCER_MAPPING),
     CategoryConfig(
         name="age_over_65",
         column="age",
@@ -117,8 +111,20 @@ CATEGORY_REGISTRY: List[CategoryConfig] = [
 
 
 # ---------------------------------------------------------------------------
-# Bootstrap: event rate, AUC, Brier score (single resampling pass)
+# Bootstrap and interval helpers: event rate, AUC, Brier score.
 # ---------------------------------------------------------------------------
+
+
+def wilson_interval(successes, n, ci=0.95):
+    if n <= 0:
+        return np.nan, np.nan
+    z = float(norm.ppf(1 - (1 - ci) / 2))
+    phat = float(successes) / n
+    denominator = 1 + z * z / n
+    center = (phat + z * z / (2 * n)) / denominator
+    half = z * np.sqrt((phat * (1 - phat) + z * z / (4 * n)) / n) / denominator
+    return max(0.0, center - half), min(1.0, center + half)
+
 
 def bootstrap_metrics_ci(y_true, y_score, n_boot=2000, ci=0.95, random_state=None, compute_auc=True):
     """Return point estimates + percentile bootstrap CIs for AUC and
@@ -157,16 +163,24 @@ def bootstrap_metrics_ci(y_true, y_score, n_boot=2000, ci=0.95, random_state=Non
     brier_lo, brier_hi = pct_ci(boot_briers)
     auc_lo, auc_hi = pct_ci(boot_aucs) if compute_auc else (np.nan, np.nan)
 
+    def clamp_auc(value):
+        return float(np.clip(value, 0.0, 1.0))
+
     return {
         "event_rate": point_event_rate,
-        "auc": point_auc, "auc_ci_low": auc_lo, "auc_ci_high": auc_hi,
-        "brier": point_brier, "brier_ci_low": brier_lo, "brier_ci_high": brier_hi,
+        "auc": clamp_auc(point_auc),
+        "auc_ci_low": clamp_auc(auc_lo),
+        "auc_ci_high": clamp_auc(auc_hi),
+        "brier": point_brier,
+        "brier_ci_low": brier_lo,
+        "brier_ci_high": brier_hi,
     }
 
 
 # ---------------------------------------------------------------------------
 # Subgroup analysis
 # ---------------------------------------------------------------------------
+
 
 def compute_subgroup_metrics(
     df: pd.DataFrame,
@@ -175,7 +189,6 @@ def compute_subgroup_metrics(
     subgroup_col: str,
     n_boot: int = 2000,
     ci: float = 0.95,
-    min_n: int = 10,
     random_state: Optional[int] = None,
 ) -> pd.DataFrame:
     """Compute event rate, AUC, and Brier score (+ bootstrap CIs) per
@@ -186,23 +199,45 @@ def compute_subgroup_metrics(
         n = len(sub_df)
         n_pos = int(sub_df[label_col].sum()) if n else 0
         n_neg = n - n_pos
+        event_rate_low, event_rate_high = wilson_interval(n_pos, n)
 
-        if n < min_n:
-            results.append({
-                "subgroup": subgroup_value, "n": n, "n_pos": n_pos,
-                "event_rate": np.nan,
-                "auc": np.nan, "auc_ci_low": np.nan, "auc_ci_high": np.nan,
-                "brier": np.nan, "brier_ci_low": np.nan, "brier_ci_high": np.nan,
-                "skipped_reason": "insufficient data",
-            })
+        if n == 0:
+            results.append(
+                {
+                    "subgroup": subgroup_value,
+                    "n": n,
+                    "n_pos": n_pos,
+                    "event_rate": np.nan,
+                    "event_rate_ci_low": event_rate_low,
+                    "event_rate_ci_high": event_rate_high,
+                    "auc": np.nan,
+                    "auc_ci_low": np.nan,
+                    "auc_ci_high": np.nan,
+                    "brier": np.nan,
+                    "brier_ci_low": np.nan,
+                    "brier_ci_high": np.nan,
+                    "skipped_reason": "no labelled rows",
+                }
+            )
             continue
 
         compute_auc = n_pos > 0 and n_neg > 0
         metrics = bootstrap_metrics_ci(
-            sub_df[label_col], sub_df[score_col],
-            n_boot=n_boot, ci=ci, random_state=random_state, compute_auc=compute_auc,
+            sub_df[label_col],
+            sub_df[score_col],
+            n_boot=n_boot,
+            ci=ci,
+            random_state=random_state,
+            compute_auc=compute_auc,
         )
-        row = {"subgroup": subgroup_value, "n": n, "n_pos": n_pos, **metrics}
+        row = {
+            "subgroup": subgroup_value,
+            "n": n,
+            "n_pos": n_pos,
+            "event_rate_ci_low": event_rate_low,
+            "event_rate_ci_high": event_rate_high,
+            **metrics,
+        }
         row["skipped_reason"] = None if compute_auc else "single class only (AUC undefined)"
         results.append(row)
 
@@ -210,11 +245,40 @@ def compute_subgroup_metrics(
 
 
 # ---------------------------------------------------------------------------
+# Dashboard-friendly category metrics: no first-treatment comparison.
+# ---------------------------------------------------------------------------
+
+
+def compute_category_metrics(
+    df,
+    category,
+    label_col="target_ED_30d",
+    score_col="ed_pred_prob",
+    n_boot=2000,
+    ci=0.95,
+    random_state=42,
+):
+    analysis_df = df.copy()
+    subgroup_col = f"_subgroup_{category.name}"
+    analysis_df[subgroup_col] = category.get_subgroup_labels(analysis_df)
+    return compute_subgroup_metrics(
+        analysis_df,
+        label_col=label_col,
+        score_col=score_col,
+        subgroup_col=subgroup_col,
+        n_boot=n_boot,
+        ci=ci,
+        random_state=random_state,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Plotting
 # ---------------------------------------------------------------------------
 
+
 def plot_subgroup_metrics(results: pd.DataFrame, category: CategoryConfig, output_dir: str, ci_pct: int, title_note=""):
-    plot_df = results[results["skipped_reason"] != "insufficient data"].copy()
+    plot_df = results[results["n"] > 0].copy()
     if plot_df.empty:
         print(f"[WARN] No valid subgroups to plot for category '{category.name}'. Skipping plot.")
         return None
@@ -235,7 +299,7 @@ def plot_subgroup_metrics(results: pd.DataFrame, category: CategoryConfig, outpu
         ("brier", "brier_ci_low", "brier_ci_high", "Brier Score", None),
     ]
 
-    for panel_idx, (ax, (val_col, lo_col, hi_col, title, ylim)) in enumerate(zip(axes, panel_specs)):
+    for panel_idx, (ax, (val_col, lo_col, hi_col, title, ylim)) in enumerate(zip(axes, panel_specs, strict=False)):
         values = plot_df[val_col].fillna(0)
         has_ci = lo_col is not None and hi_col is not None
         if has_ci:
@@ -246,8 +310,12 @@ def plot_subgroup_metrics(results: pd.DataFrame, category: CategoryConfig, outpu
             yerr = None
 
         bars = ax.bar(
-            x, values, yerr=yerr,
-            capsize=4, color="#4C72B0", edgecolor="black",
+            x,
+            values,
+            yerr=yerr,
+            capsize=4,
+            color="#4C72B0",
+            edgecolor="black",
         )
 
         ax.set_xticks(x)
@@ -261,16 +329,27 @@ def plot_subgroup_metrics(results: pd.DataFrame, category: CategoryConfig, outpu
             ax.axhline(0.5, color="gray", linestyle="--", linewidth=1, alpha=0.7)
 
         top = max(values.max(), 1e-6)
-        for bar, (_, row) in zip(bars, plot_df.iterrows()):
+        for bar, (_, row) in zip(bars, plot_df.iterrows(), strict=False):
             height = bar.get_height()
             if pd.isna(row[val_col]):
-                ax.annotate("n/a", xy=(bar.get_x() + bar.get_width() / 2, 0.02 * top),
-                            ha="center", va="bottom", fontsize=8, color="black")
+                ax.annotate(
+                    "n/a",
+                    xy=(bar.get_x() + bar.get_width() / 2, 0.02 * top),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="black",
+                )
             elif panel_idx == 0:
                 # Sample size only needs to be shown once; put it on the first panel.
-                ax.annotate(f"n={int(row['n'])}", xy=(bar.get_x() + bar.get_width() / 2, 0.02 * top),
-                            ha="center", va="bottom", fontsize=8,
-                            color="white" if height > 0.08 * top else "black")
+                ax.annotate(
+                    f"n={int(row['n'])}",
+                    xy=(bar.get_x() + bar.get_width() / 2, 0.02 * top),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="white" if height > 0.08 * top else "black",
+                )
 
     fig.suptitle(f"Subgroup metrics by {category.display_name}{title_note}", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -287,25 +366,23 @@ def plot_subgroup_metrics(results: pd.DataFrame, category: CategoryConfig, outpu
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(description="Subgroup event rate / AUC / Brier score analysis with bootstrap CIs.")
     parser.add_argument("csv_path", help="Path to input CSV file.")
-    parser.add_argument("--output-dir", default="./subgroup_auc_output",
-                         help="Directory to save figures and result tables (created if missing).")
-    parser.add_argument("--score-col", default="ed_pred_prob",
-                         help="Column with predicted probabilities.")
-    parser.add_argument("--label-col", default="target_ED_30d",
-                         help="Column with binary ground-truth label.")
-    parser.add_argument("--categories", nargs="+", default=None,
-                         help="Subset of registered category names to run (default: all).")
-    parser.add_argument("--n-boot", type=int, default=2000,
-                         help="Number of bootstrap resamples per subgroup.")
-    parser.add_argument("--ci", type=float, default=0.95,
-                         help="Confidence interval width, e.g. 0.95 for 95%%.")
-    parser.add_argument("--min-n", type=int, default=10,
-                         help="Minimum subgroup size required to compute metrics.")
-    parser.add_argument("--random-state", type=int, default=42,
-                         help="Random seed for reproducible bootstrapping.")
+    parser.add_argument(
+        "--output-dir",
+        default="./subgroup_auc_output",
+        help="Directory to save figures and result tables (created if missing).",
+    )
+    parser.add_argument("--score-col", default="ed_pred_prob", help="Column with predicted probabilities.")
+    parser.add_argument("--label-col", default="target_ED_30d", help="Column with binary ground-truth label.")
+    parser.add_argument(
+        "--categories", nargs="+", default=None, help="Subset of registered category names to run (default: all)."
+    )
+    parser.add_argument("--n-boot", type=int, default=2000, help="Number of bootstrap resamples per subgroup.")
+    parser.add_argument("--ci", type=float, default=0.95, help="Confidence interval width, e.g. 0.95 for 95%%.")
+    parser.add_argument("--random-state", type=int, default=42, help="Random seed for reproducible bootstrapping.")
     args = parser.parse_args()
 
     df = pd.read_csv(args.csv_path)
@@ -344,8 +421,13 @@ def main():
             continue
 
         results = compute_subgroup_metrics(
-            analysis_df, label_col=args.label_col, score_col=args.score_col, subgroup_col=subgroup_col,
-            n_boot=args.n_boot, ci=args.ci, min_n=args.min_n, random_state=args.random_state,
+            analysis_df,
+            label_col=args.label_col,
+            score_col=args.score_col,
+            subgroup_col=subgroup_col,
+            n_boot=args.n_boot,
+            ci=args.ci,
+            random_state=args.random_state,
         )
 
         print(results.to_string(index=False))
@@ -355,7 +437,10 @@ def main():
         print(f"[INFO] Saved results table to {csv_out}")
 
         plot_subgroup_metrics(
-            results, category, args.output_dir, ci_pct=int(round(args.ci * 100)),
+            results,
+            category,
+            args.output_dir,
+            ci_pct=int(round(args.ci * 100)),
             title_note="",
         )
 

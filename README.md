@@ -113,6 +113,25 @@ python src/deployment/evaluation.py --start-date <start_date> --end-date <end_da
 ```
 `<monthly_pull_date>` refers to the monthly chemo file pull date. The monthly chemo file pulls are cumulative. Make sure to choose a date that is 2 months after `<end_date>` if you are predicting the risk of ED visit in 1 month.  
 
+## Live monitoring
+
+Run the live monitoring pipeline weekly:
+
+```bash
+python src/deployment/live_monitoring_pipeline.py \
+  --deployment-start-date 20260826 \
+  --run-date <YYYYMMDD> \
+  --consented-physician-file <path to file>
+```
+
+`--run-date` is the as-of date for the monitoring run; the weekly result shown is the most recent week before that date, and the monthly result is the most recent month before that date. `--consented-physician-file` contains the list of consenting oncologists.
+
+The pipeline tracks weekly and monthly metrics on a rolling basis for first-treatment patients of consenting oncologists. Weekly metrics cover alerts by week, alerts by consenting oncologist, the distribution of risk scores, feature missingness, and PSI. Monthly metrics cover subgroup analyses of AUROC, Brier score, and event rate. Where relevant, results are compared with silent deployment data.
+
+Underlying metric data are computed and stored incrementally. If no baseline exists, one is created automatically. The run finishes by generating a consolidated dashboard.
+
+To report results for a given month, a monthly pull dated at least 30 days after the last day of that month must be available. For example, May 2026 results require a monthly pull dated 2026-06-30 or later.
+
 # Docker container
 
 The Docker image bakes in the source code, `Infos/`, and `Models/`. The `Data/` and `Outputs/` directories are mounted when the container runs so that input data and generated files stay outside the image.
